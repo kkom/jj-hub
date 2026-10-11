@@ -35,6 +35,28 @@ describe("merge", () => {
     );
   });
 
+  // Rebased onto the trunk, the first merged change would conflict with the second's edit of the
+  // same file, rather than coming out empty. GitHub may delete the merged branches only after the
+  // fetch, so the fetch can't be relied on to drop them either.
+  it("drops every merged change, where a later one edited what an earlier one wrote", async () => {
+    const repository = pushedStack("a", "b", "c");
+    repository.jj("edit", "b");
+    repository.write("a.txt", "a, edited by b\n");
+    repository.jj("new", "c");
+    repository.jj("git", "push", "--bookmark", "b", "--bookmark", "c");
+    const github = fakeGitHub(
+      { ...open, c: openPullRequest("b", 3, "c") },
+      stackOf(1, 2, 3),
+      () => {
+        squashMergeOnGitHub(repository, "a", { above: ["b", "c"], deleted: false });
+        squashMergeOnGitHub(repository, "b", { above: ["c"], deleted: false });
+      },
+    );
+    await Effect.runPromise(mergeIn(repository, github, "b"));
+    expect(repository.log()).toEqual(["c [c]"]);
+    expect(repository.jj("log", "--no-graph", "-r", "conflicts()", "-T", "description")).toBe("");
+  });
+
   it("merges a pull request outside a stack alone", async () => {
     const repository = pushedStack("a", "b");
     const github = fakeGitHub(open, Option.none(), () => {
