@@ -15,6 +15,7 @@ import {
   lines,
   readLog,
   STACK_ROOTS,
+  type StackChange,
   stackRevset,
 } from "./stack/changes";
 import { checkTrunk } from "./stack/trunk";
@@ -184,14 +185,27 @@ const rebaseStack = (root: string, required: readonly string[]) =>
 export const sync = (
   // Change ids whose stacks are rebased even where that conflicts.
   required: readonly string[] = [],
+  // Changes known to have merged, which are dropped rather than left to come out empty on the
+  // trunk. Several merged together don't: a change one merged above it edited conflicts there.
+  mergedChanges: readonly StackChange[] = [],
 ): Effect.Effect<void, JjFailed | NotCombined, Jj> =>
   Effect.gen(function* () {
     const jj = yield* Jj;
     const before = yield* bookmarksBeforeFetch;
     yield* jj.run(["git", "fetch"]);
+    // After the fetch, so it can't bring a branch GitHub hasn't deleted yet back as a bookmark.
+    for (const { bookmark } of mergedChanges) {
+      yield* jj.run(["bookmark", "forget", "--include-remotes", `exact:${bookmark}`]);
+    }
+    if (mergedChanges.length > 0) {
+      const revset = mergedChanges.map(({ changeId }) => `change_id(${changeId})`).join(" | ");
+      yield* jj.run(["abandon", `(${revset}) & mutable()`]);
+    }
     const fetched = yield* bookmarkTargets;
     const notCombined: string[] = [];
-    for (const bookmark of before) {
+    for (const bookmark of before.filter(({ name }) =>
+      mergedChanges.every((change) => change.bookmark !== name),
+    )) {
       if (!(yield* combine(bookmark, fetched.get(bookmark.name)?.origin))) {
         notCombined.push(bookmark.name);
       }
