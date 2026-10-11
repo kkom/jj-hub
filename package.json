@@ -1,6 +1,6 @@
 {
   "name": "jj-octo",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "A jj subcommand for working with GitHub that supports stacking",
   "license": "MIT",
   "repository": {
