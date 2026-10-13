@@ -27,7 +27,7 @@ Each handler receives the **narrowed** member, so `circle.radius` is reachable w
 
 ## Use `Match.orElse` only for open input
 
-Where the input is genuinely open-ended — a string from the wire, a keyword we don't model. ❌ Never as a shortcut past variants we own: if our own union grows, we want the compiler to say so.
+Where the input is genuinely open-ended — a string from the wire, a keyword we don't model. ❌ Never as a shortcut past variants we own: if our own union grows, we want the compiler to fail on each unhandled variant.
 
 ## Parse unknown input with a schema
 

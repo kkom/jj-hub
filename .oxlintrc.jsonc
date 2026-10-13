@@ -161,6 +161,11 @@
     "typescript/promise-function-async": ["error", { "checkArrowFunctions": false }],
     // Effect schema trees and combinator stacks nest four deep routinely.
     "unicorn/max-nested-calls": ["error", { "max": 5 }],
+    // It reads any two-argument call of an array method's name as passing
+    // `thisArg`, so it fails on Effect.flatMap(effect, f) and
+    // Effect.forEach(items, f), which take no `thisArg`. Nothing here passes
+    // one, since no callback uses `this`.
+    "unicorn/no-array-method-this-argument": "off",
     "unicorn/no-immediate-mutation": "off",
     "unicorn/no-null": "off",
     // oxfmt prints hexadecimal digits in lowercase and this rule, which takes
