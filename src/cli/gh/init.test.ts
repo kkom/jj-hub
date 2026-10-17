@@ -41,6 +41,13 @@ describe("init", () => {
     expect(clone.jj("config", "get", "aliases.gh")).toContain("jj-octo");
   });
 
+  it("copies a name that isn't a bare TOML value, such as a bot's", async () => {
+    const clone = gitClone(scratchRepository(), "renovate[bot]");
+    await initIn(clone.layer);
+    expect(clone.jj("config", "get", "user.name")).toBe("renovate[bot]\n");
+    expect(clone.jj("config", "get", 'revset-aliases."trunk()"')).toBe('"main"@origin\n');
+  });
+
   it("gives an author to the working copy of a repository colocated without one", async () => {
     const clone = gitClone(scratchRepository());
     clone.jj("git", "init", "--colocate");
