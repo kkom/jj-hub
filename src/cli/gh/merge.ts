@@ -11,11 +11,9 @@ import {
   bookmarkRevset,
   bookmarksAt,
   bookmarkTargets,
-  changeIdsAt,
   commitsAt,
   downstackChanges,
   pushedState,
-  stackRevset,
   upstackRevset,
 } from "./stack/changes";
 import { type PublishFailed, republish } from "./stack/publish";
@@ -91,15 +89,13 @@ export const merge = (
     }
     const pullRequest = yield* openPullRequestOf(top);
     const above = yield* bookmarksAt(upstackRevset(bookmarkRevset(top)));
-    const stackChanges = yield* changeIdsAt(stackRevset(revision));
 
     if ((yield* mergeOnGitHub(pullRequest, trunk)) === "enqueued") {
       yield* Console.error("queued to merge; run `jj gh sync` once it has");
     } else {
       yield* Console.error(`merged up to #${pullRequest.number}`);
-      // The merge changed this stack's base, so it is rebased even where that conflicts. GitHub
-      // merged exactly what was pushed, as checked above, so the merged changes are dropped.
-      yield* sync(stackChanges, changes);
+      // GitHub merged exactly what was pushed, as checked above.
+      yield* sync(changes);
       // Any bookmark left above the merged change names the rest of its stack.
       for (const bookmark of above) {
         if ((yield* commitsAt(bookmarkRevset(bookmark))).length > 0) {
@@ -119,7 +115,7 @@ export const mergeCommand = Command.make(
     "Merge the pull requests of a change and the ones below it",
     "Squash-merges them, and prints which before it does. An empty working copy means the change below it. Fails before merging if any of the changes has edits that aren't pushed.",
     "A pull request in a GitHub stack is merged together with the pull requests below it. Either all of them merge or none does. A pull request outside a stack is merged alone, and only if its base is the trunk.",
-    "Then syncs, as `jj gh sync` does, and pushes what is left of the change's stack again, up to the highest branch already on GitHub. Unlike `jj gh sync`, it abandons the merged changes and forgets their bookmarks, rather than relying on each coming out empty on the trunk, which one doesn't where a change merged above it edited the same lines. It also rebases the rest of the stack even where it conflicts with the trunk, and the conflict is recorded in the change.",
+    "Then syncs, as `jj gh sync` does: it abandons the merged changes, forgets their bookmarks, and rebases the rest of the stack onto the trunk even where it conflicts, recording the conflict in the change. Then it pushes what is left of the change's stack again, up to the highest branch already on GitHub.",
     "If GitHub queues the merge instead, nothing is synced. Run `jj gh sync` once it has merged.",
   ),
 );

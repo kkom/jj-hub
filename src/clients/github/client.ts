@@ -43,6 +43,8 @@ export class GitHub extends Context.Service<
     readonly mergePullRequest: (
       pullRequest: PullRequestNumber,
     ) => Effect.Effect<void, GitHubFailed>;
+    /** The head commit of each merged pull request from the branch. */
+    readonly mergedHeads: (branch: string) => Effect.Effect<readonly string[], GitHubFailed>;
     readonly openPullRequest: (
       branch: string,
     ) => Effect.Effect<Option.Option<PullRequest>, GitHubFailed>;
@@ -76,6 +78,14 @@ const PullRequests = responseOf<"pulls/list">()(
       draft: Schema.optionalKey(Schema.Boolean),
       number: PullRequestNumberSchema,
       title: Schema.String,
+    }),
+  ),
+);
+const ClosedPullRequests = responseOf<"pulls/list">()(
+  Schema.Array(
+    Schema.Struct({
+      head: Schema.Struct({ sha: Schema.String }),
+      merged_at: Schema.NullOr(Schema.String),
     }),
   ),
 );
@@ -187,6 +197,9 @@ export const GitHubLive = (
 
       const mergeRequest = (path: string) => json(MergeResult)(HttpClientRequest.get(repo(path)));
 
+      const fromBranch = (branch: string, state: "closed" | "open") =>
+        repo(`/pulls?state=${state}&head=${repository.owner}:${encodeURIComponent(branch)}`);
+
       return {
         addToStack: (stack, pullRequests) =>
           send(
@@ -244,12 +257,14 @@ export const GitHubLive = (
               message: `merging #${pullRequest} ended ${settled.status}: ${settled.details.message}`,
             });
           }),
-        openPullRequest: (branch) =>
-          json(PullRequests)(
-            HttpClientRequest.get(
-              repo(`/pulls?state=open&head=${repository.owner}:${encodeURIComponent(branch)}`),
+        mergedHeads: (branch) =>
+          json(ClosedPullRequests)(HttpClientRequest.get(fromBranch(branch, "closed"))).pipe(
+            Effect.map((closed) =>
+              closed.filter(({ merged_at }) => merged_at !== null).map(({ head }) => head.sha),
             ),
-          ).pipe(
+          ),
+        openPullRequest: (branch) =>
+          json(PullRequests)(HttpClientRequest.get(fromBranch(branch, "open"))).pipe(
             Effect.map((found) =>
               Option.map(
                 Option.fromNullishOr(found[0]),

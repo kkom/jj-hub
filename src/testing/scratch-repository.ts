@@ -36,6 +36,10 @@ export interface ScratchRepository {
   readonly layer: Layer.Layer<Git | Jj>;
   /** Each described change above the trunk, bottom to top, as `description [bookmarks]`. */
   readonly log: () => readonly string[];
+  /** The head commit of each pull request from the branch that `mergedOnGitHub` recorded. */
+  readonly mergedHeads: (branch: string) => readonly string[];
+  /** Records that GitHub merged a pull request from the branch, whose head was the commit. */
+  readonly mergedOnGitHub: (branch: string, head: string) => void;
   /** Adds one change per name on top of `main`, each with a file and a bookmark of that name. */
   readonly stack: (...names: readonly string[]) => void;
   /** Writes a file into the working copy of the second jj clone. */
@@ -124,6 +128,7 @@ const open = (root: string): ScratchRepository => {
   const write = (file: string, content: string): void => {
     writeFileSync(path.join(repository, file), content);
   };
+  const merged: { readonly branch: string; readonly head: string }[] = [];
 
   return {
     branches: () =>
@@ -149,6 +154,11 @@ const open = (root: string): ScratchRepository => {
           String.raw`description.first_line() ++ " [" ++ local_bookmarks.map(|b| b.name()).join(",") ++ "]\n"`,
         ),
       ),
+    mergedHeads: (branch) =>
+      merged.filter((pullRequest) => pullRequest.branch === branch).map(({ head }) => head),
+    mergedOnGitHub: (branch, head) => {
+      merged.push({ branch, head });
+    },
     stack: (...names) => {
       jj("new", "main");
       for (const name of names) {
