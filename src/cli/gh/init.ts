@@ -42,7 +42,9 @@ const copyIdentity = Effect.gen(function* () {
     // Git exits 1 for a key it has no value for.
     const value = (yield* git.read(["config", key]).pipe(Effect.orElseSucceed(() => ""))).trim();
     if (own === "" && value !== "") {
-      yield* jj.run(["config", "set", "--repo", key, value]);
+      // Jj parses the value as TOML, which a name such as `renovate[bot]` isn't, so it goes in as a
+      // TOML string.
+      yield* jj.run(["config", "set", "--repo", key, JSON.stringify(value)]);
     }
   }
 });
