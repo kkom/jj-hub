@@ -1,4 +1,6 @@
 import { afterAll, describe, expect, it } from "bun:test";
+import { existsSync } from "node:fs";
+import path from "node:path";
 
 import { BunServices } from "@effect/platform-bun";
 import { Effect, Layer } from "effect";
@@ -9,6 +11,7 @@ import { gitClone } from "../../testing/git-clone";
 import {
   removeScratchRepositories,
   type ScratchRepository,
+  scratchDirectory,
   scratchRepository,
 } from "../../testing/scratch-repository";
 import { init } from "./init";
@@ -46,6 +49,18 @@ describe("init", () => {
     await initIn(clone.layer);
     expect(clone.jj("config", "get", "user.name")).toBe("renovate[bot]\n");
     expect(clone.jj("config", "get", 'revset-aliases."trunk()"')).toBe('"main"@origin\n');
+  });
+
+  it("leaves a git worktree as it is", async () => {
+    const clone = gitClone(scratchRepository());
+    const worktree = path.join(scratchDirectory("worktree-"), "checkout");
+    clone.git("worktree", "add", "--detach", worktree);
+    const layer = Layer.merge(clone.layerAt(worktree), BunServices.layer);
+    const failure = await Effect.runPromise(Effect.flip(init.pipe(Effect.provide(layer))));
+    expect(failure.message).toBe(
+      "this is a git worktree, where jj would make a second repository; run `jj workspace add` in the main checkout instead",
+    );
+    expect(existsSync(path.join(worktree, ".jj"))).toBe(false);
   });
 
   it("gives an author to the working copy of a repository colocated without one", async () => {

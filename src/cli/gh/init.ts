@@ -9,7 +9,8 @@ import { trunkRevset } from "./stack/trunk";
 
 /**
  * Makes the git checkout a colocated jj repository. A jj repository further up, holding the
- * checkout as an ordinary directory, doesn't count.
+ * checkout as an ordinary directory, doesn't count. A git worktree stays as it is, since a jj
+ * repository there would be a second one over the same git repository, and share its branches.
  */
 const colocate = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem;
@@ -25,6 +26,18 @@ const colocate = Effect.gen(function* () {
     Effect.orElseSucceed(() => ""),
   );
   if (jjRoot !== root) {
+    const [gitDirectory, commonDirectory] = (yield* git.read([
+      "rev-parse",
+      "--path-format=absolute",
+      "--git-dir",
+      "--git-common-dir",
+    ])).split("\n");
+    if (gitDirectory !== commonDirectory) {
+      yield* new GitFailed({
+        message:
+          "this is a git worktree, where jj would make a second repository; run `jj workspace add` in the main checkout instead",
+      });
+    }
     yield* jj.run(["git", "init", "--colocate", root]);
   }
 });
