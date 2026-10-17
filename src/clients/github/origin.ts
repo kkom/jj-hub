@@ -2,6 +2,7 @@ import { Effect, Layer, Option } from "effect";
 
 import { Jj } from "../jj";
 import { GitHubFailed, GitHubLive } from "./client";
+import { connection } from "./connection";
 import { repositoryFromUrl } from "./repository";
 
 // The GitHub repository behind the `origin` remote, which jj reads whether or not the
@@ -15,6 +16,6 @@ export const GitHubFromOrigin = Layer.unwrap(
     if (Option.isNone(repository)) {
       return yield* new GitHubFailed({ message: "the `origin` remote isn't a GitHub repository" });
     }
-    return GitHubLive(repository.value);
+    return GitHubLive(repository.value, yield* connection);
   }),
 );

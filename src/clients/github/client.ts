@@ -1,7 +1,7 @@
-import { Config, Context, Data, Effect, Layer, Option, Redacted, Schedule, Schema } from "effect";
-import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
-import { ChildProcess, ChildProcessSpawner } from "effect/process";
+import { Context, Data, Effect, Layer, Option, Schedule, Schema } from "effect";
+import { FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
 
+import type { Connection } from "./connection";
 import { bodyOf, responseOf } from "./openapi";
 import type { Repository } from "./repository";
 import {
@@ -101,46 +101,30 @@ const MergeRequest = Schema.Struct({
 const StartedMerge = responseOf<"pulls/merge-async">()(MergeRequest);
 const MergeResult = responseOf<"pulls/get-merge-async-result">()(MergeRequest);
 
-/**
- * The token for api.github.com: `GH_TOKEN` or `GITHUB_TOKEN` where the environment sets one,
- * and otherwise executes `gh auth token` to generate one.
- */
-const token = Effect.gen(function* () {
-  const fromEnvironment = yield* Config.option(
-    Config.Redacted("GH_TOKEN").pipe(Config.orElse(() => Config.Redacted("GITHUB_TOKEN"))),
-  );
-  if (Option.isSome(fromEnvironment)) {
-    return fromEnvironment.value;
-  }
-  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-  // `gh` prints nothing and exits 1 when it isn't logged in, and the exit code isn't reported.
-  const stored = (yield* spawner.string(ChildProcess.make("gh", ["auth", "token"]))).trim();
-  return stored === "" ? yield* Effect.fail("no token") : Redacted.make(stored);
-}).pipe(
-  Effect.mapError(
-    () => new GitHubFailed({ message: "no GitHub token: set GH_TOKEN, or run `gh auth login`" }),
-  ),
-);
-
 export const GitHubLive = (
   repository: Repository,
-): Layer.Layer<
-  GitHub,
-  GitHubFailed,
-  ChildProcessSpawner.ChildProcessSpawner | HttpClient.HttpClient
-> => {
+  connection: Connection,
+): Layer.Layer<GitHub, never, HttpClient.HttpClient> => {
   // A cloud session's proxy only allows paths under the repository, so every call starts there.
   const repo = (path: string): string => `/repos/${repository.owner}/${repository.name}${path}`;
   return Layer.effect(
     GitHub,
     Effect.gen(function* () {
-      const bearer = yield* token;
+      // Bun's fetch takes a proxy, and certificate authorities to trust in place of its own.
+      const requestInit: BunFetchRequestInit = Option.match(connection.proxy, {
+        onNone: () => ({}),
+        onSome: ({ ca, url }) =>
+          Option.match(ca, {
+            onNone: () => ({ proxy: url }),
+            onSome: (certificates) => ({ proxy: url, tls: { ca: certificates } }),
+          }),
+      });
       const client = (yield* HttpClient.HttpClient).pipe(
         HttpClient.mapRequest((request) =>
           request.pipe(
             HttpClientRequest.prependUrl("https://api.github.com"),
             HttpClientRequest.acceptJson,
-            HttpClientRequest.bearerToken(bearer),
+            HttpClientRequest.bearerToken(connection.token),
             HttpClientRequest.setHeaders({
               "user-agent": "jj-octo",
               "x-github-api-version": "2022-11-28",
@@ -153,6 +137,7 @@ export const GitHubLive = (
       // the field it rejected, or the proxy naming a route a cloud session can't use.
       const send = (request: HttpClientRequest.HttpClientRequest) =>
         client.execute(request).pipe(
+          Effect.provideService(FetchHttpClient.RequestInit, requestInit),
           Effect.flatMap((response) =>
             response.status < 400
               ? Effect.succeed(response)
