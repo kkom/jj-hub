@@ -56,6 +56,14 @@ bun update --global --latest jj-octo
 
 It uses only GitHub's REST API, so that it works in a [Claude Code](https://claude.com/claude-code) cloud session. There, GitHub is reached through a proxy that allows REST calls for the session's repository and blocks GraphQL, which `gh pr` depends on.
 
+Where git reaches github.com through a proxy that adds the credentials itself, as in a Claude Code cloud session that keeps the token outside the sandbox, have `jj-octo` use that proxy too:
+
+```
+jj config set --repo jj-octo.github-auth git-proxy
+```
+
+`jj-octo` then sends its requests through the `http.proxy` that git uses for `https://github.com`, trusts the certificate authorities in git's `http.sslCAInfo` for it, and sends a placeholder token that the proxy replaces. It reads git's settings on each run, so it follows a proxy that moves to another port. `token`, the default, sends your own token.
+
 ## Development
 
 ```
