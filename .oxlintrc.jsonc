@@ -26,6 +26,9 @@
     // Effect's factories are capitalized plain calls: Schema.Struct, Data.TaggedError.
     "new-cap": ["error", { "capIsNew": false }],
     "no-async-await": "off",
+    // It catches `&` typed for `&&`, which tsc already rejects wherever a boolean is
+    // expected, and bans the file-mode and bit-flag tests that need the operators.
+    "no-bitwise": "off",
     "no-magic-numbers": "off",
     // Its fix is to mutate in place, which the readonly types here forbid, leaving
     // a hand-rebuilt object that drops whatever it forgets.
