@@ -1,7 +1,7 @@
 import { Console, Data, Effect } from "effect";
 import { Command } from "effect/cli";
 
-import { GitHub } from "../../clients/github/client";
+import { GitHub, type GitHubFailed } from "../../clients/github/client";
 import { GitHubFromOrigin } from "../../clients/github/origin";
 import { Jj, type JjFailed } from "../../clients/jj";
 import { asUserError, withHelp } from "../command";
@@ -173,38 +173,76 @@ const rebaseStack = (root: string, required: readonly string[]) =>
     }
   });
 
+/** A change whose pull request merged, with the bookmark that names its branch. */
+export type MergedChange = Pick<StackChange, "bookmark" | "changeId">;
+
 /**
- * Rebases every stack that doesn't conflict onto the fetched trunk, and pushes nothing. A squash merge adds the merged
- * work to the trunk as a new commit, so the original change still sits under the rest of its
- * stack. Rebased onto the trunk it's empty, and `--skip-emptied` abandons it.
+ * The changes whose pull requests GitHub reports as merged. Only a change that is still the
+ * commit GitHub merged counts, so a change edited since keeps its edits, and a pull request from
+ * an earlier branch of the same name doesn't count.
+ */
+const mergedOnGitHub = (bookmarks: readonly BookmarkBeforeFetch[]) =>
+  Effect.gen(function* () {
+    const github = yield* GitHub;
+    const merged = yield* Effect.forEach(
+      bookmarks.filter(({ remote }) => remote !== undefined),
+      ({ change, local, name }) =>
+        github
+          .mergedHeads(name)
+          .pipe(
+            Effect.map((heads): readonly MergedChange[] =>
+              heads.includes(local) ? [{ bookmark: name, changeId: change }] : [],
+            ),
+          ),
+      { concurrency: "unbounded" },
+    );
+    return merged.flat();
+  });
+
+/**
+ * Rebases every stack that doesn't conflict onto the fetched trunk, and pushes nothing.
  *
- * GitHub deletes a merged branch, but can do so after the fetch, and the bookmark then stays behind on
- * the trunk. So every bookmark that was on a stack and is now on the trunk is forgotten, remote side
- * included, rather than left for the next fetch.
+ * A squash merge adds the merged work to the trunk as a new commit, so the original change still
+ * sits under the rest of its stack. Rebased onto the trunk, it can conflict with what the trunk
+ * now has, rather than come out empty: where a change merged above it edited the same lines, or
+ * the trunk moved. So every change whose pull request merged is abandoned, and its bookmark
+ * forgotten. The rest of its stack is rebased even where that conflicts, since what it was based
+ * on is gone.
+ *
+ * A change that reaches the trunk some other way is empty after the rebase, and `--skip-emptied`
+ * abandons it. Its bookmark then stays behind on the trunk, so every bookmark that was on a stack
+ * and is now on the trunk is forgotten too, remote side included.
  */
 export const sync = (
-  // Change ids whose stacks are rebased even where that conflicts.
-  required: readonly string[] = [],
-  // Changes known to have merged, which are dropped rather than left to come out empty on the
-  // trunk. Several merged together don't: a change one merged above it edited conflicts there.
-  mergedChanges: readonly StackChange[] = [],
-): Effect.Effect<void, JjFailed | NotCombined, Jj> =>
+  // Changes known to have merged, which GitHub isn't asked about.
+  known: readonly MergedChange[] = [],
+): Effect.Effect<void, GitHubFailed | JjFailed | NotCombined, GitHub | Jj> =>
   Effect.gen(function* () {
     const jj = yield* Jj;
     const before = yield* bookmarksBeforeFetch;
+    const merged = [
+      ...known,
+      ...(yield* mergedOnGitHub(
+        before.filter(({ name }) => known.every(({ bookmark }) => bookmark !== name)),
+      )),
+    ];
     yield* jj.run(["git", "fetch"]);
     // After the fetch, so it can't bring a branch GitHub hasn't deleted yet back as a bookmark.
-    for (const { bookmark } of mergedChanges) {
+    for (const { bookmark } of merged) {
       yield* jj.run(["bookmark", "forget", "--include-remotes", `exact:${bookmark}`]);
     }
-    if (mergedChanges.length > 0) {
-      const revset = mergedChanges.map(({ changeId }) => `change_id(${changeId})`).join(" | ");
-      yield* jj.run(["abandon", `(${revset}) & mutable()`]);
+    const mergedRevset = `(${["none()", ...merged.map(({ changeId }) => `change_id(${changeId})`)].join(" | ")}) & mutable()`;
+    const required = yield* changeIdsAt(`(${mergedRevset}):: ~ (${mergedRevset})`);
+    if (merged.length > 0) {
+      yield* jj.run(["abandon", mergedRevset]);
+      yield* Console.error(
+        `abandoned the changes whose pull requests merged: ${merged.map(({ bookmark }) => bookmark).join(", ")}`,
+      );
     }
     const fetched = yield* bookmarkTargets;
     const notCombined: string[] = [];
     for (const bookmark of before.filter(({ name }) =>
-      mergedChanges.every((change) => change.bookmark !== name),
+      merged.every((change) => change.bookmark !== name),
     )) {
       if (!(yield* combine(bookmark, fetched.get(bookmark.name)?.origin))) {
         notCombined.push(bookmark.name);
@@ -213,10 +251,10 @@ export const sync = (
     for (const root of yield* commitsAt(BEHIND_ROOTS)) {
       yield* rebaseStack(root, required);
     }
-    const merged = (yield* bookmarksAt("::trunk()")).filter((name) =>
+    const onTrunk = (yield* bookmarksAt("::trunk()")).filter((name) =>
       before.some((bookmark) => bookmark.name === name),
     );
-    for (const name of merged) {
+    for (const name of onTrunk) {
       yield* jj.run(["bookmark", "forget", "--include-remotes", `exact:${name}`]);
     }
     if (notCombined.length > 0) {
@@ -240,8 +278,8 @@ export const syncCommand = Command.make("sync", {}, () =>
 ).pipe(
   withHelp(
     "Fetch, and rebase every change onto the trunk",
-    "Fetches, then rebases every change that isn't merged yet onto the trunk, keeping each on the changes below it. A change that has merged is empty after the rebase, so it's abandoned and its bookmark forgotten.",
-    "A stack that would conflict with the trunk is left where it was, and named. Rebase it yourself with `jj rebase` when you want to resolve it.",
+    "Fetches, then rebases every change that isn't merged yet onto the trunk, keeping each on the changes below it. A change whose pull request GitHub merged is abandoned and its bookmark forgotten, unless it was edited after the merge.",
+    "A stack that would conflict with the trunk is left where it was, and named. Rebase it yourself with `jj rebase` when you want to resolve it. The rest of a stack whose changes merged is rebased even where it conflicts, and the conflict is recorded in the change.",
     "Commits added to a branch on GitHub are squashed into the branch's local change, whether or not that change was also edited locally. Where GitHub only rebased a branch, the local change is kept.",
     "Fails before fetching if `trunk()` isn't GitHub's default branch, which `jj gh init` sets.",
     "Pushes nothing. Run `jj gh submit` to update the pull requests of a change and the ones below it.",

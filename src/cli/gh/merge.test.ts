@@ -2,7 +2,7 @@ import { afterAll, describe, expect, it } from "bun:test";
 
 import { Effect, Layer, Option } from "effect";
 
-import { squashMergeOnGitHub } from "../../testing/branch-changes";
+import { moveTrunkOnGitHub, squashMergeOnGitHub } from "../../testing/branch-changes";
 import { fakeGitHub, openPullRequest, stackOf } from "../../testing/fake-github";
 import {
   pushedStack,
@@ -15,6 +15,12 @@ afterAll(removeScratchRepositories);
 
 const open = { a: openPullRequest("main", 1, "a"), b: openPullRequest("a", 2, "b") };
 
+// GitHub reports the pull requests `squashMergeOnGitHub` merged, and merges as `onMerge` says.
+const mergingIn = (repository: ScratchRepository, onMerge: () => void) => ({
+  mergedHeads: repository.mergedHeads,
+  onMerge,
+});
+
 const mergeIn = (
   repository: ScratchRepository,
   github: ReturnType<typeof fakeGitHub>,
@@ -24,9 +30,13 @@ const mergeIn = (
 describe("merge", () => {
   it("merges a stacked pull request through its stack, then syncs and republishes the rest", async () => {
     const repository = pushedStack("a", "b");
-    const github = fakeGitHub(open, stackOf(1, 2), () => {
-      squashMergeOnGitHub(repository, "a", { above: ["b"] });
-    });
+    const github = fakeGitHub(
+      open,
+      stackOf(1, 2),
+      mergingIn(repository, () => {
+        squashMergeOnGitHub(repository, "a", { above: ["b"] });
+      }),
+    );
     await Effect.runPromise(mergeIn(repository, github, "a"));
     expect(github.calls[0]).toBe("merge the stack up to #1");
     expect(repository.log()).toEqual(["b [b]"]);
@@ -47,21 +57,49 @@ describe("merge", () => {
     const github = fakeGitHub(
       { ...open, c: openPullRequest("b", 3, "c") },
       stackOf(1, 2, 3),
-      () => {
+      mergingIn(repository, () => {
         squashMergeOnGitHub(repository, "a", { above: ["b", "c"], deleted: false });
         squashMergeOnGitHub(repository, "b", { above: ["c"], deleted: false });
-      },
+      }),
     );
     await Effect.runPromise(mergeIn(repository, github, "b"));
     expect(repository.log()).toEqual(["c [c]"]);
     expect(repository.jj("log", "--no-graph", "-r", "conflicts()", "-T", "description")).toBe("");
   });
 
+  // The stack merges as one commit, on a trunk that moved since the stack was pushed, and with an
+  // unpushed change above it. Rebased onto the trunk, `a` would conflict with `b`'s edit.
+  it("drops the merged changes of a stack merged as one commit, and rebases the change above", async () => {
+    const repository = pushedStack("a", "b");
+    repository.jj("edit", "b");
+    repository.write("a.txt", "a, edited by b\n");
+    repository.jj("new", "b", "-m", "c");
+    repository.write("c.txt", "c\n");
+    repository.jj("git", "push", "--bookmark", "b");
+    const github = fakeGitHub(
+      open,
+      stackOf(1, 2),
+      mergingIn(repository, () => {
+        moveTrunkOnGitHub(repository);
+        squashMergeOnGitHub(repository, "b", { below: ["a"], deleted: false });
+      }),
+    );
+    await Effect.runPromise(mergeIn(repository, github, "b"));
+    expect(repository.log()).toEqual(["c []"]);
+    expect(repository.jj("log", "--no-graph", "-r", "conflicts()", "-T", "description")).toBe("");
+    expect(repository.jj("log", "--no-graph", "-r", "@-", "-T", "description")).toBe("b (#1)\n");
+    expect(repository.jj("bookmark", "list", "--all-remotes", "a", "b")).toBe("");
+  });
+
   it("merges a pull request outside a stack alone", async () => {
     const repository = pushedStack("a", "b");
-    const github = fakeGitHub(open, Option.none(), () => {
-      squashMergeOnGitHub(repository, "a");
-    });
+    const github = fakeGitHub(
+      open,
+      Option.none(),
+      mergingIn(repository, () => {
+        squashMergeOnGitHub(repository, "a");
+      }),
+    );
     await Effect.runPromise(mergeIn(repository, github, "a"));
     expect(github.calls[0]).toBe("merge #1");
     expect(repository.log()).toEqual(["b [b]"]);
@@ -69,13 +107,17 @@ describe("merge", () => {
 
   it("rebases the rest of the stack even where it conflicts with the trunk", async () => {
     const repository = pushedStack("a", "b");
-    const github = fakeGitHub(open, Option.none(), () => {
-      squashMergeOnGitHub(repository, "a");
-      repository.writeOnGitHub("b.txt", "somebody else's\n");
-      repository.git("add", ".");
-      repository.git("commit", "--quiet", "-m", "another pull request");
-      repository.git("push", "--quiet", "origin", "main");
-    });
+    const github = fakeGitHub(
+      open,
+      Option.none(),
+      mergingIn(repository, () => {
+        squashMergeOnGitHub(repository, "a");
+        repository.writeOnGitHub("b.txt", "somebody else's\n");
+        repository.git("add", ".");
+        repository.git("commit", "--quiet", "-m", "another pull request");
+        repository.git("push", "--quiet", "origin", "main");
+      }),
+    );
     const failure = await Effect.runPromise(Effect.flip(mergeIn(repository, github, "a")));
     expect(failure.message).toContain("resolve the conflicts first");
     expect(repository.log()).toEqual(["b [b]"]);
@@ -86,10 +128,14 @@ describe("merge", () => {
 
   it("merges from the change below an empty working copy by default", async () => {
     const repository = pushedStack("a", "b");
-    const github = fakeGitHub(open, stackOf(1, 2), () => {
-      squashMergeOnGitHub(repository, "a", { deleted: false });
-      squashMergeOnGitHub(repository, "b", { deleted: false });
-    });
+    const github = fakeGitHub(
+      open,
+      stackOf(1, 2),
+      mergingIn(repository, () => {
+        squashMergeOnGitHub(repository, "a", { deleted: false });
+        squashMergeOnGitHub(repository, "b", { deleted: false });
+      }),
+    );
     await Effect.runPromise(mergeIn(repository, github, "@"));
     expect(github.calls).toEqual(["merge the stack up to #2"]);
     expect(repository.log()).toEqual([]);

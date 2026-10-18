@@ -9,12 +9,18 @@ import {
   StackNumberSchema,
 } from "../clients/github/types";
 
+interface FakeGitHubOptions {
+  /** The head commit of each merged pull request from the branch. None by default. */
+  readonly mergedHeads?: (branch: string) => readonly string[];
+  /** What GitHub does to the repository when it merges, which the fake has no repository to do. */
+  readonly onMerge?: (pullRequest: PullRequestNumber) => void;
+}
+
 // A GitHub with the given open pull requests and stack, recording every call that changes something.
 export const fakeGitHub = (
   open: Readonly<Record<string, PullRequest>>,
   stack: Option.Option<RemoteStack>,
-  // What GitHub does to the repository when it merges, which the fake has no repository to do.
-  onMerge?: (pullRequest: PullRequestNumber) => void,
+  { mergedHeads = () => [], onMerge }: FakeGitHubOptions = {},
 ): { readonly calls: readonly string[]; readonly layer: Layer.Layer<GitHub> } => {
   const calls: string[] = [];
   let registered = stack;
@@ -55,6 +61,7 @@ export const fakeGitHub = (
         ),
         Effect.as("merged"),
       ),
+    mergedHeads: (branch) => Effect.sync(() => mergedHeads(branch)),
     openPullRequest: (branch) => Effect.succeed(Option.fromNullishOr(open[branch])),
     setBase: (number, base) => record(`base #${number} → ${base}`),
     setDescription: (number, { title }) => record(`describe #${number} as ${title}`),

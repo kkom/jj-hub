@@ -66,33 +66,43 @@ export const rewriteElsewhere = (
 };
 
 /**
- * Squash-merges a branch into `main`. With `deleted`, also deletes the branch, and rebases the
- * branches above it onto the new `main` in order, as GitHub does for the rest of a stack.
+ * Squash-merges a branch into `main` as one commit, together with the branches `below` it, as
+ * GitHub's stack merge does. Records each one's pull request as merged, and with `deleted` also
+ * deletes the branches. Rebases the branches `above` it onto the new `main` in order, as GitHub
+ * does for the rest of a stack.
  */
 export const squashMergeOnGitHub = (
   repository: ScratchRepository,
   branch: string,
   {
     above = [],
+    below = [],
     deleted = true,
-  }: { readonly above?: readonly string[]; readonly deleted?: boolean } = {},
+  }: {
+    readonly above?: readonly string[];
+    readonly below?: readonly string[];
+    readonly deleted?: boolean;
+  } = {},
 ): void => {
   repository.git("fetch", "--quiet");
   repository.git("checkout", "--quiet", "-B", "main", "origin/main");
   repository.git("merge", "--quiet", "--squash", `origin/${branch}`);
   repository.git("commit", "--quiet", "-m", `${branch} (#1)`);
   repository.git("push", "--quiet", "origin", "main");
-  let below = repository.git("rev-parse", `origin/${branch}`).trim();
+  for (const name of [...below, branch]) {
+    repository.mergedOnGitHub(name, repository.git("rev-parse", `origin/${name}`).trim());
+  }
+  let previous = repository.git("rev-parse", `origin/${branch}`).trim();
   let base = "main";
   for (const name of above) {
     const pushed = repository.git("rev-parse", `origin/${name}`).trim();
     repository.git("checkout", "--quiet", "-B", name, pushed);
-    repository.git("rebase", "--quiet", "--onto", base, below, name);
+    repository.git("rebase", "--quiet", "--onto", base, previous, name);
     repository.git("push", "--quiet", "--force", "origin", name);
-    below = pushed;
+    previous = pushed;
     base = name;
   }
   if (deleted) {
-    repository.git("push", "--quiet", "origin", "--delete", branch);
+    repository.git("push", "--quiet", "origin", "--delete", ...below, branch);
   }
 };

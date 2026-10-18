@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from "bun:test";
 
-import { Effect } from "effect";
+import { Effect, Layer, Option } from "effect";
 
 import {
   addCommitOnGitHub,
@@ -9,6 +9,7 @@ import {
   rewriteElsewhere,
   squashMergeOnGitHub,
 } from "../../testing/branch-changes";
+import { fakeGitHub } from "../../testing/fake-github";
 import {
   pushedStack,
   removeScratchRepositories,
@@ -19,8 +20,19 @@ import { sync } from "./sync";
 
 afterAll(removeScratchRepositories);
 
+// GitHub reports the pull requests `squashMergeOnGitHub` merged.
+const syncing = (repository: ScratchRepository) =>
+  sync().pipe(
+    Effect.provide(
+      Layer.merge(
+        repository.layer,
+        fakeGitHub({}, Option.none(), { mergedHeads: repository.mergedHeads }).layer,
+      ),
+    ),
+  );
+
 const syncIn = (repository: ScratchRepository): Promise<void> =>
-  Effect.runPromise(sync().pipe(Effect.provide(repository.layer)));
+  Effect.runPromise(syncing(repository));
 
 const files = (repository: ScratchRepository, revision: string): readonly string[] =>
   repository
@@ -71,6 +83,32 @@ describe("sync", () => {
     await syncIn(repository);
     expect(repository.log()).toEqual(["b [b]"]);
     expect(repository.jj("bookmark", "list", "--all-remotes", "a")).toBe("");
+  });
+
+  // GitHub merges a stack as one commit, on a trunk that moved since the stack was pushed. Rebased
+  // onto the trunk, `a` would conflict with `b`'s edit of the same file, rather than come out
+  // empty. The branches are still on GitHub, so the fetch doesn't drop the changes either.
+  it("abandons every change whose pull request merged, and rebases the rest onto the trunk", async () => {
+    repository.jj("edit", "b");
+    repository.write("a.txt", "a, edited by b\n");
+    repository.jj("new", "b", "-m", "c");
+    repository.write("c.txt", "c\n");
+    repository.jj("git", "push", "--bookmark", "b");
+    moveTrunkOnGitHub(repository);
+    squashMergeOnGitHub(repository, "b", { below: ["a"], deleted: false });
+    await syncIn(repository);
+    expect(repository.log()).toEqual(["c []"]);
+    expect(repository.jj("log", "--no-graph", "-r", "conflicts()", "-T", "description")).toBe("");
+    expect(files(repository, "@")).toEqual(["a.txt", "b.txt", "base.txt", "c.txt", "trunk.txt"]);
+    expect(repository.jj("bookmark", "list", "--all-remotes", "a", "b")).toBe("");
+  });
+
+  it("keeps a change edited after its pull request merged", async () => {
+    squashMergeOnGitHub(repository, "a", { deleted: false });
+    editLocally(repository);
+    await syncIn(repository);
+    expect(repository.log()).toEqual(["a [a]", "b [b]"]);
+    expect(files(repository, "a")).toEqual(["a.txt", "base.txt", "local.txt"]);
   });
 
   it("takes the rest of a stack as GitHub rebased it after a merge", async () => {
@@ -134,9 +172,7 @@ describe("sync", () => {
       await syncIn(repository);
       rewriteElsewhere(repository, "a", "b");
       moveTrunkOnGitHub(repository, "later.txt");
-      const failure = await Effect.runPromise(
-        Effect.flip(sync()).pipe(Effect.provide(repository.layer)),
-      );
+      const failure = await Effect.runPromise(Effect.flip(syncing(repository)));
       expect(failure.message).toContain("weren't combined:\nb\na\n");
       expect(repository.jj("log", "--no-graph", "-r", "conflicts()", "-T", "change_id")).toBe("");
       expect(files(repository, "@")).toEqual([
@@ -151,9 +187,7 @@ describe("sync", () => {
     it("fails after rebasing where both sides changed and GitHub rewrote the branch", async () => {
       editLocally(repository);
       rebaseOnGitHub(repository, "a", { extra: true });
-      const failure = await Effect.runPromise(
-        Effect.flip(sync()).pipe(Effect.provide(repository.layer)),
-      );
+      const failure = await Effect.runPromise(Effect.flip(syncing(repository)));
       expect(failure.message).toContain("weren't combined:\na\n");
       expect(files(repository, "b")).toContain("trunk.txt");
       const check = await Effect.runPromise(
