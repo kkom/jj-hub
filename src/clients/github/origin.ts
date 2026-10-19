@@ -3,6 +3,7 @@ import { Effect, Layer, Option } from "effect";
 import { Jj } from "../jj";
 import { GitHubFailed, GitHubLive } from "./client";
 import { connection } from "./connection";
+import { httpClientLayer } from "./http";
 import { repositoryFromUrl } from "./repository";
 
 // The GitHub repository behind the `origin` remote, which jj reads whether or not the
@@ -16,6 +17,7 @@ export const GitHubFromOrigin = Layer.unwrap(
     if (Option.isNone(repository)) {
       return yield* new GitHubFailed({ message: "the `origin` remote isn't a GitHub repository" });
     }
-    return GitHubLive(repository.value, yield* connection);
+    const { proxy, token } = yield* connection;
+    return GitHubLive(repository.value, token).pipe(Layer.provide(httpClientLayer(proxy)));
   }),
 );
