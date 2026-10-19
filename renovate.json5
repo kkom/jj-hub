@@ -43,6 +43,14 @@
       packageNameTemplate: "bun",
     },
     {
+      // mise's own version
+      customType: "regex",
+      managerFilePatterns: ["/(^|/)mise\\.toml$/"],
+      matchStrings: ['min_version = \\{ soft = "(?<currentValue>[^"]+)" \\}'],
+      depNameTemplate: "jdx/mise",
+      datasourceTemplate: "github-releases",
+    },
+    {
       // Renovate's own mise manager skips the `http` backend, so this reads the
       // version out of the `# renovate:` comment above it instead.
       customType: "regex",
