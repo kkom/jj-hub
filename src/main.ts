@@ -2,7 +2,6 @@
 import { NodeRuntime, NodeServices } from "@effect/platform-node";
 import { Effect } from "effect";
 import { CliConfig, Command, GlobalFlag } from "effect/cli";
-import { FetchHttpClient } from "effect/http";
 
 import manifest from "../package.json" with { type: "json" };
 import { jjGhCommand } from "./cli/gh/command";
@@ -19,6 +18,6 @@ NodeRuntime.runMain(
         builtIns: [GlobalFlag.Help, GlobalFlag.Version, GlobalFlag.Wizard, GlobalFlag.LogLevel],
       }),
     ),
-    Effect.provide([NodeServices.layer, FetchHttpClient.layer]),
+    Effect.provide(NodeServices.layer),
   ),
 );
