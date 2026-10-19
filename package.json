@@ -35,8 +35,8 @@
     "@tsconfig/strictest": "2.0.8",
     "@types/bun": "1.4.3",
     "effect": "4.0.1",
-    "oxfmt": "0.71.0",
-    "oxlint": "1.86.0",
+    "oxfmt": "0.73.0",
+    "oxlint": "1.88.0",
     "oxlint-tsgolint": "7.0.2004",
     "typescript": "7.0.2"
   },
