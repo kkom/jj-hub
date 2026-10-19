@@ -11,15 +11,15 @@ Run `jj gh --help` to list the commands.
 
 ## Install
 
-`jj-octo` runs on [bun](https://bun.sh), and calls `jj`. Both must be on `PATH`.
+`jj-octo` runs on [Node](https://nodejs.org) 22.19 or later, and calls `jj`. Both must be on `PATH`. It also runs on [Bun](https://bun.sh) 1.4 or later, as below.
 
 ### For one repository
 
-With [mise](https://mise.jdx.dev), in the repository's `mise.toml`, where `A.B.C` is a bun version and `X.Y.Z` a [released version](https://www.npmjs.com/package/jj-octo?activeTab=versions) of `jj-octo`:
+With [mise](https://mise.jdx.dev), in the repository's `mise.toml`, where `A.B.C` is a Node version and `X.Y.Z` a [released version](https://www.npmjs.com/package/jj-octo?activeTab=versions) of `jj-octo`:
 
 ```toml
 [tools]
-bun = "A.B.C"
+node = "A.B.C"
 
 [tools."npm:jj-octo"]
 version = "X.Y.Z"
@@ -38,21 +38,17 @@ It makes the checkout a jj repository colocated with git, makes GitHub's default
 ### For every repository
 
 ```
-bun install --global jj-octo
+npm install --global jj-octo
 jj config set --user aliases.gh '["util", "exec", "--", "jj-octo"]'
 ```
 
-Then run `jj-octo init` once in each checkout, as above.
+Then run `jj-octo init` once in each checkout, as above. To update it later, run `npm install --global jj-octo@latest`.
 
-To update it later:
-
-```
-bun update --global --latest jj-octo
-```
+`bun install --global jj-octo` installs it with Bun instead. The command starts with `#!/usr/bin/env node`, so it needs Node on `PATH` either way. `bun x --bun jj-octo` runs the installed command on Bun.
 
 ## GitHub access
 
-`jj-octo` reads the repository from the `origin` remote. It takes its token from `GH_TOKEN` or `GITHUB_TOKEN`, and otherwise from `gh auth token`.
+`jj-octo` reads the repository from the `origin` remote. It takes its token from `GH_TOKEN` or `GITHUB_TOKEN`, and otherwise from `gh auth token`. It sends requests through the proxy that `HTTPS_PROXY` names, or `HTTP_PROXY` where that is unset, unless `NO_PROXY` matches `api.github.com`, and trusts the certificate authorities in `NODE_EXTRA_CA_CERTS` as well as the runtime's own.
 
 It uses only GitHub's REST API, so that it works in a [Claude Code](https://claude.com/claude-code) cloud session. There, GitHub is reached through a proxy that allows REST calls for the session's repository and blocks GraphQL, which `gh pr` depends on.
 
