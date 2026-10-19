@@ -30,7 +30,7 @@
     "test": "bun test ./src"
   },
   "devDependencies": {
-    "@effect/platform-bun": "4.0.5",
+    "@effect/platform-node": "4.0.5",
     "@octokit/openapi-types": "29.0.1",
     "@tsconfig/strictest": "2.0.8",
     "@types/bun": "1.4.3",

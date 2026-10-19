@@ -2,7 +2,7 @@ import { afterAll, describe, expect, it } from "bun:test";
 import { writeFileSync } from "node:fs";
 import path from "node:path";
 
-import { BunServices } from "@effect/platform-bun";
+import { NodeServices } from "@effect/platform-node";
 import { ConfigProvider, Effect, Layer, Option, Redacted } from "effect";
 
 import { gitClone } from "../../testing/git-clone";
@@ -21,7 +21,7 @@ const checkout = (env: Readonly<Record<string, string>> = {}) => {
   clone.jj("git", "init", "--colocate");
   const layer = Layer.mergeAll(
     clone.layer,
-    BunServices.layer,
+    NodeServices.layer,
     ConfigProvider.layer(ConfigProvider.fromEnv({ env: { ...env } })),
   );
   const resolve = () =>
