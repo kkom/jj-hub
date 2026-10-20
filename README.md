@@ -11,11 +11,32 @@ Run `jj gh --help` to list the commands.
 
 ## Install
 
-`jj-octo` runs on [bun](https://bun.sh), and calls `jj`. Both must be on `PATH`.
+Each [GitHub release](https://github.com/kkom/jj-octo/releases) has a standalone `jj-octo` for macOS on Apple silicon and Linux on x64 and arm64. Alternatively, run the [npm package](https://www.npmjs.com/package/jj-octo) with [Bun](https://bun.sh). Either way, `jj` must be on `PATH`.
 
-### For one repository
+With [mise](https://mise.jdx.dev), add it to one repository's `mise.toml`:
 
-With [mise](https://mise.jdx.dev), in the repository's `mise.toml`, where `A.B.C` is a bun version and `X.Y.Z` a [released version](https://www.npmjs.com/package/jj-octo?activeTab=versions) of `jj-octo`:
+```toml
+[tools]
+"github:kkom/jj-octo" = "X.Y.Z"
+```
+
+Or to every repository:
+
+```
+mise use --global github:kkom/jj-octo@X.Y.Z
+```
+
+Then run `jj-octo init` once in each checkout. It makes the checkout a jj repository colocated with git, makes GitHub's default branch `trunk()`, and sets the `jj gh` alias.
+
+## GitHub access
+
+`jj-octo` reads the repository from the `origin` remote. It takes its token from `GH_TOKEN` or `GITHUB_TOKEN`, and otherwise from `gh auth token`. It sends requests through the proxy that `HTTPS_PROXY` names, and trusts the certificate authorities in `NODE_EXTRA_CA_CERTS` as well as Bun's own.
+
+## In a Claude Code cloud session
+
+In a [Claude Code](https://claude.com/claude-code) cloud session, a proxy carries all traffic to GitHub. It allows REST calls only for the session's repositories, and blocks GraphQL. That's why `jj-octo` uses only GitHub's REST API, while `gh pr` and other tools that depend on GraphQL fail there.
+
+mise can't read this repository's releases there, since it reads them through the GitHub API. Install the npm package instead:
 
 ```toml
 [tools]
@@ -27,42 +48,19 @@ version = "X.Y.Z"
 allow_low_downloads = true
 ```
 
-Then set up each checkout, since jj doesn't read config from a committed file:
+The session sets `HTTPS_PROXY`, `NODE_EXTRA_CA_CERTS` and a placeholder `GH_TOKEN`. Its proxy replaces the placeholder with real credentials. So `jj-octo` works there with its default settings.
 
-```
-jj-octo init
-```
+## In a Claude Code self-hosted environment
 
-It makes the checkout a jj repository colocated with git, makes GitHub's default branch `trunk()`, and sets the `jj gh` alias.
-
-### For every repository
-
-```
-bun install --global jj-octo
-jj config set --user aliases.gh '["util", "exec", "--", "jj-octo"]'
-```
-
-Then run `jj-octo init` once in each checkout, as above.
-
-To update it later:
-
-```
-bun update --global --latest jj-octo
-```
-
-## GitHub access
-
-`jj-octo` reads the repository from the `origin` remote. It takes its token from `GH_TOKEN` or `GITHUB_TOKEN`, and otherwise from `gh auth token`. It sends requests through the proxy that `HTTPS_PROXY` names, and trusts the certificate authorities in `NODE_EXTRA_CA_CERTS` as well as Bun's own.
-
-It uses only GitHub's REST API, so that it works in a [Claude Code](https://claude.com/claude-code) cloud session. There, GitHub is reached through a proxy that allows REST calls for the session's repository and blocks GraphQL, which `gh pr` depends on.
-
-Where git reaches github.com through a proxy that adds the credentials itself, as in a Claude Code cloud session that keeps the token outside the sandbox, have `jj-octo` use that proxy too:
+A self-hosted runner started with `--use-anthropic-git-proxy` sends git through Anthropic's git proxy, which adds the session user's credentials. The sandbox then holds no GitHub token, and only git's config names the proxy. There, have `jj-octo` use the same proxy:
 
 ```
 jj config set --repo jj-octo.github-auth git-proxy
 ```
 
-`jj-octo` then sends its requests through the `http.proxy` that git uses for `https://github.com`, trusts the certificate authorities in git's `http.sslCAInfo` for it, and sends a placeholder token that the proxy replaces. It reads git's settings on each run, so it follows a proxy that moves to another port. `token`, the default, sends your own token.
+`jj-octo` then sends its requests through the `http.proxy` that git uses for `https://github.com`, and trusts the certificate authorities in git's `http.sslCAInfo` for it. It sends a placeholder token, which the proxy must replace with real credentials. It reads git's settings on each run, so it follows a proxy that moves to another port.
+
+Don't use `git-proxy` with a proxy that only forwards requests. GitHub would get the placeholder token and reject every request. `token`, the default, sends your own token.
 
 ## Development
 
@@ -72,4 +70,4 @@ bun run check    # format, lint, types, tests and build
 bun run fix      # format and lint fixes
 ```
 
-To release, run `bun run release:patch`, `release:minor` or `release:major` in a pull request, which raises `version` in `package.json`. Once it is merged and the checks pass on `main`, the same workflow publishes that version to npm and tags it.
+To release, run `bun run release:patch`, `release:minor` or `release:major` in a pull request, which raises `version` in `package.json`. Once it is merged and the checks pass on `main`, the same workflow publishes that version to npm, and as a GitHub release with the executables.
