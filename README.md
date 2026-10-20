@@ -1,6 +1,6 @@
 # jj-octo
 
-A [jj](https://github.com/jj-vcs/jj) subcommand for working with GitHub that supports stacking.
+A [jj](https://github.com/jj-vcs/jj) subcommand for GitHub that supports stacked pull requests and works in Claude Code cloud sessions.
 
 > [!WARNING]
 > `jj-octo` is in early development, and its commands may change. So far it is largely vibe coded.
