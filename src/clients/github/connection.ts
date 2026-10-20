@@ -7,7 +7,7 @@ import { GitHubFailed } from "./client";
 
 /** A proxy that requests to api.github.com go through, with the certificate authorities to trust. */
 export interface Proxy {
-  /** PEM certificates trusted in place of the runtime's own, where there are any. */
+  /** PEM certificates trusted in place of the system's, where there are any. */
   readonly ca: Option.Option<string>;
   readonly url: string;
 }
@@ -80,10 +80,8 @@ const gitProxy = Effect.gen(function* () {
           ),
         ),
       );
-  // Git reads a proxy without a scheme as an HTTP one.
-  const withScheme = /^[a-z][\d+.a-z-]*:\/\//iu.test(url.value) ? url.value : `http://${url.value}`;
   const connection: Connection = {
-    proxy: Option.some({ ca, url: withScheme }),
+    proxy: Option.some({ ca, url: url.value }),
     token: Redacted.make("proxy-injected"),
   };
   return connection;
