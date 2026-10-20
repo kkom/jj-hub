@@ -105,14 +105,38 @@ describe("the built file", () => {
     expect(received).toStrictEqual(logOfA);
   });
 
-  // The checkout is someone else's, so its `.env` may not change how jj-octo runs. Loaded, this
-  // one would send the request past the proxy.
+  // The checkout is someone else's, so neither its `.env` nor its `bunfig.toml` may change how
+  // jj-octo runs. Loaded, this `.env` would send the request past the proxy.
   it("ignores a .env file in the checkout", async () => {
     const received = await throughProxy("api.github.com", pullRequestOfA, (proxy) => {
       const { cwd, env } = checkoutOfA();
       // Excluded, so jj doesn't record it.
       appendFileSync(path.join(cwd, ".git", "info", "exclude"), ".env\n");
       writeFileSync(path.join(cwd, ".env"), "NO_PROXY=*\n");
+      return run(["log"], {
+        cwd,
+        env: {
+          ...env,
+          GH_TOKEN: "test-token",
+          HTTPS_PROXY: proxy.url,
+          NODE_EXTRA_CA_CERTS: proxy.caFile,
+        },
+      });
+    });
+    expect(received).toStrictEqual(logOfA);
+  });
+
+  // Loaded, the checkout's `bunfig.toml` would run its preload inside jj-octo, which fails the run.
+  it("ignores a bunfig.toml file in the checkout", async () => {
+    const received = await throughProxy("api.github.com", pullRequestOfA, (proxy) => {
+      const { cwd, env } = checkoutOfA();
+      // Excluded, so jj doesn't record them.
+      appendFileSync(path.join(cwd, ".git", "info", "exclude"), "bunfig.toml\npreload.ts\n");
+      writeFileSync(path.join(cwd, "bunfig.toml"), 'preload = ["./preload.ts"]\n');
+      writeFileSync(
+        path.join(cwd, "preload.ts"),
+        'console.error("ran the checkout\'s bunfig.toml preload");\nprocess.exit(3);\n',
+      );
       return run(["log"], {
         cwd,
         env: {
