@@ -52,7 +52,7 @@ bun update --global --latest jj-octo
 
 ## GitHub access
 
-`jj-octo` reads the repository from the `origin` remote. It takes its token from `GH_TOKEN` or `GITHUB_TOKEN`, and otherwise from `gh auth token`.
+`jj-octo` reads the repository from the `origin` remote. It takes its token from `GH_TOKEN` or `GITHUB_TOKEN`, and otherwise from `gh auth token`. It sends requests through the proxy that `HTTPS_PROXY` names, and trusts the certificate authorities in `NODE_EXTRA_CA_CERTS` as well as Bun's own.
 
 It uses only GitHub's REST API, so that it works in a [Claude Code](https://claude.com/claude-code) cloud session. There, GitHub is reached through a proxy that allows REST calls for the session's repository and blocks GraphQL, which `gh pr` depends on.
 
