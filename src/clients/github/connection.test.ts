@@ -72,6 +72,16 @@ describe("connection", () => {
     });
   });
 
+  it("reads a proxy without a scheme as an HTTP one, as git does", async () => {
+    const { git, jj, resolve } = checkout();
+    git("config", "http.proxy", "127.0.0.1:1234");
+    jj("config", "set", "--repo", authKey, "git-proxy");
+    expect(await resolve()).toStrictEqual({
+      proxy: { ca: undefined, url: "http://127.0.0.1:1234" },
+      token: "proxy-injected",
+    });
+  });
+
   it("fails for git-proxy where git has no proxy for github.com", async () => {
     const { failure, git, jj } = checkout({ GH_TOKEN: "own-token" });
     git("config", "http.https://example.com/.proxy", "http://127.0.0.1:1234");
