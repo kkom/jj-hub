@@ -1,4 +1,5 @@
 import { afterAll, describe, expect, it } from "bun:test";
+import { appendFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import manifest from "../package.json" with { type: "json" };
@@ -11,7 +12,8 @@ import {
 
 afterAll(removeScratchRepositories);
 
-// The file `bun run build` writes, which npm publishes. `bun run test` builds it first.
+// The file `bun run build` writes, which npm publishes. `bun run test` builds it first. The tests
+// run it as an installed command does, through its shebang.
 const built = path.join(import.meta.dirname, "..", "dist", "jj-octo.js");
 
 // The environment of the tests, without the proxy settings it may hold, which would otherwise
@@ -26,7 +28,7 @@ const run = async (
   args: readonly string[],
   options: { readonly cwd: string; readonly env: Readonly<Record<string, string>> },
 ) => {
-  const child = Bun.spawn(["bun", built, ...args], {
+  const child = Bun.spawn([built, ...args], {
     cwd: options.cwd,
     env: { ...inherited, ...options.env },
     stderr: "pipe",
@@ -90,6 +92,27 @@ describe("the built file", () => {
   it("reads pull requests through the proxy HTTPS_PROXY names", async () => {
     const received = await throughProxy("api.github.com", pullRequestOfA, (proxy) => {
       const { cwd, env } = checkoutOfA();
+      return run(["log"], {
+        cwd,
+        env: {
+          ...env,
+          GH_TOKEN: "test-token",
+          HTTPS_PROXY: proxy.url,
+          NODE_EXTRA_CA_CERTS: proxy.caFile,
+        },
+      });
+    });
+    expect(received).toStrictEqual(logOfA);
+  });
+
+  // The checkout is someone else's, so its `.env` may not change how jj-octo runs. Loaded, this
+  // one would send the request past the proxy.
+  it("ignores a .env file in the checkout", async () => {
+    const received = await throughProxy("api.github.com", pullRequestOfA, (proxy) => {
+      const { cwd, env } = checkoutOfA();
+      // Excluded, so jj doesn't record it.
+      appendFileSync(path.join(cwd, ".git", "info", "exclude"), ".env\n");
+      writeFileSync(path.join(cwd, ".env"), "NO_PROXY=*\n");
       return run(["log"], {
         cwd,
         env: {
