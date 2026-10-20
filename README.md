@@ -30,7 +30,11 @@ Then run `jj-octo init` once in each checkout. It makes the checkout a jj reposi
 
 ## GitHub access
 
-`jj-octo` reads the repository from the `origin` remote. It takes its token from `GH_TOKEN` or `GITHUB_TOKEN`, and otherwise from `gh auth token`. It sends requests through the proxy that `HTTPS_PROXY` names, and trusts the certificate authorities in `NODE_EXTRA_CA_CERTS` as well as Bun's own.
+`jj-octo` reads the repository from the `origin` remote.
+
+By default, it reads its token from `GH_TOKEN` or `GITHUB_TOKEN`, and otherwise runs `gh auth token`.
+
+With `jj-octo.github-auth` set to `git-proxy`, it sends a placeholder token instead. It sends requests through git's proxy for github.com, and trusts git's certificate authorities for it in place of Bun's own. [In a self-hosted environment](#in-a-self-hosted-environment) describes when to use it.
 
 ## In Claude Code cloud sessions
 
