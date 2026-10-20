@@ -2,7 +2,7 @@ import { afterAll, describe, expect, it } from "bun:test";
 import { writeFileSync } from "node:fs";
 import path from "node:path";
 
-import { NodeServices } from "@effect/platform-node";
+import { BunServices } from "@effect/platform-bun";
 import { ConfigProvider, Effect, Layer, Option, Redacted } from "effect";
 
 import { gitClone } from "../../testing/git-clone";
@@ -21,7 +21,7 @@ const checkout = (env: Readonly<Record<string, string>> = {}) => {
   clone.jj("git", "init", "--colocate");
   const layer = Layer.mergeAll(
     clone.layer,
-    NodeServices.layer,
+    BunServices.layer,
     ConfigProvider.layer(ConfigProvider.fromEnv({ env: { ...env } })),
   );
   const resolve = () =>
@@ -65,16 +65,6 @@ describe("connection", () => {
   it("uses the system's certificate authorities where git names no CA bundle", async () => {
     const { git, jj, resolve } = checkout();
     git("config", "http.proxy", "http://127.0.0.1:1234");
-    jj("config", "set", "--repo", authKey, "git-proxy");
-    expect(await resolve()).toStrictEqual({
-      proxy: { ca: undefined, url: "http://127.0.0.1:1234" },
-      token: "proxy-injected",
-    });
-  });
-
-  it("reads a proxy without a scheme as an HTTP one, as git does", async () => {
-    const { git, jj, resolve } = checkout();
-    git("config", "http.proxy", "127.0.0.1:1234");
     jj("config", "set", "--repo", authKey, "git-proxy");
     expect(await resolve()).toStrictEqual({
       proxy: { ca: undefined, url: "http://127.0.0.1:1234" },

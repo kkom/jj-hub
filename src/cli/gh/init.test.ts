@@ -2,7 +2,7 @@ import { afterAll, describe, expect, it } from "bun:test";
 import { existsSync } from "node:fs";
 import path from "node:path";
 
-import { NodeServices } from "@effect/platform-node";
+import { BunServices } from "@effect/platform-bun";
 import { Effect, Layer } from "effect";
 
 import type { Git } from "../../clients/git";
@@ -20,7 +20,7 @@ import { checkTrunk } from "./stack/trunk";
 afterAll(removeScratchRepositories);
 
 const initIn = (layer: Layer.Layer<Git | Jj>): Promise<void> =>
-  Effect.runPromise(init.pipe(Effect.provide(Layer.merge(layer, NodeServices.layer))));
+  Effect.runPromise(init.pipe(Effect.provide(Layer.merge(layer, BunServices.layer))));
 
 /** Pushes a `develop` branch, and makes it `origin`'s default branch. */
 const defaultToDevelop = (repository: ScratchRepository): void => {
@@ -55,7 +55,7 @@ describe("init", () => {
     const clone = gitClone(scratchRepository());
     const worktree = path.join(scratchDirectory("worktree-"), "checkout");
     clone.git("worktree", "add", "--detach", worktree);
-    const layer = Layer.merge(clone.layerAt(worktree), NodeServices.layer);
+    const layer = Layer.merge(clone.layerAt(worktree), BunServices.layer);
     const failure = await Effect.runPromise(Effect.flip(init.pipe(Effect.provide(layer))));
     expect(failure.message).toBe(
       "this is a git worktree, where jj would make a second repository; run `jj workspace add` in the main checkout instead",

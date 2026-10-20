@@ -10,7 +10,7 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { NodeServices } from "@effect/platform-node";
+import { BunServices } from "@effect/platform-bun";
 import { Layer } from "effect";
 
 import { lines } from "../cli/gh/stack/changes";
@@ -97,7 +97,7 @@ export const layerAt = (
   env: Readonly<Record<string, string>>,
 ): Layer.Layer<Git | Jj> =>
   Layer.merge(gitLayer({ cwd, env }), jjLayer({ cwd, env, quiet: true })).pipe(
-    Layer.provide(NodeServices.layer),
+    Layer.provide(BunServices.layer),
   );
 
 // The repository in a directory that already holds one: `origin.git`, `repository`, `github`

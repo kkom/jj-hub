@@ -59,72 +59,10 @@ jobs:
       - name: Run the built file
         run: ./dist/jj-octo.js --version
 
-  # Runs the built file on each runtime it supports, and on the oldest Node that `engines` allows.
-  built:
-    name: Built file on ${{ matrix.name }}
-    runs-on: ubuntu-latest
-
-    permissions:
-      contents: read
-
-    concurrency:
-      group: built-${{ matrix.name }}-${{ github.ref }}
-      cancel-in-progress: ${{ github.ref_name != 'main' }}
-
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: Bun
-            runtime: bun
-          - name: Node
-            runtime: node
-          - name: the oldest Node
-            runtime: node
-            oldest-node: true
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Install tools
-        uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5.1.2
-        with:
-          # The same age renovate.json5 waits for before updating a dependency
-          minimum_release_age: 3d
-
-      # Steps after this one find it ahead of the Node in mise.toml.
-      - name: Install the oldest Node that engines allows
-        if: matrix.oldest-node
-        run: |
-          set -euo pipefail
-          version=$(jq -r '.engines.node | ltrimstr(">=")' package.json)
-          mise install "node@${version}"
-          echo "$(mise where "node@${version}")/bin" >> "$GITHUB_PATH"
-          echo "OLDEST_NODE=v${version}" >> "$GITHUB_ENV"
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Build
-        run: bun run build
-
-      - name: Show the runtime
-        run: ${{ matrix.runtime }} --version
-
-      - name: Check that the oldest Node runs
-        if: matrix.oldest-node
-        run: test "$(node --version)" = "${OLDEST_NODE}"
-
-      - name: Test the built file
-        env:
-          JJ_OCTO_RUNTIME: ${{ matrix.runtime }}
-        run: bun test src/built.test.ts
-
   # Publishes the version in package.json when npm doesn't have it yet.
   cd:
     name: CD
-    needs: [built, ci]
+    needs: ci
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
 

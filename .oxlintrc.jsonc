@@ -44,10 +44,6 @@
             "message": "Use a fake, injected through a layer or a parameter (testing.md).",
             "name": "bun:test",
           },
-          {
-            "message": "Import undici/index.js: Bun answers a bare undici import with stubs that ignore their options.",
-            "name": "undici",
-          },
         ],
       },
     ],
@@ -159,7 +155,6 @@
             ],
             "package": "effect",
           },
-          { "from": "package", "name": ["Buffer", "Server"], "package": "@types/node" },
           // An intersection with a conditional type, which the rule can't resolve.
           "ResponseSchema",
         ],

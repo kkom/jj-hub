@@ -1,6 +1,7 @@
-import { Context, Data, Effect, Layer, Option, type Redacted, Schedule, Schema } from "effect";
-import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
+import { Context, Data, Effect, Layer, Option, Schedule, Schema } from "effect";
+import { FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
 
+import type { Connection } from "./connection";
 import { bodyOf, responseOf } from "./openapi";
 import type { Repository } from "./repository";
 import {
@@ -112,19 +113,28 @@ const MergeResult = responseOf<"pulls/get-merge-async-result">()(MergeRequest);
 
 export const GitHubLive = (
   repository: Repository,
-  token: Redacted.Redacted,
+  connection: Connection,
 ): Layer.Layer<GitHub, never, HttpClient.HttpClient> => {
   // A cloud session's proxy only allows paths under the repository, so every call starts there.
   const repo = (path: string): string => `/repos/${repository.owner}/${repository.name}${path}`;
   return Layer.effect(
     GitHub,
     Effect.gen(function* () {
+      // Bun's fetch takes a proxy, and certificate authorities to trust in place of its own.
+      const requestInit: BunFetchRequestInit = Option.match(connection.proxy, {
+        onNone: () => ({}),
+        onSome: ({ ca, url }) =>
+          Option.match(ca, {
+            onNone: () => ({ proxy: url }),
+            onSome: (certificates) => ({ proxy: url, tls: { ca: certificates } }),
+          }),
+      });
       const client = (yield* HttpClient.HttpClient).pipe(
         HttpClient.mapRequest((request) =>
           request.pipe(
             HttpClientRequest.prependUrl("https://api.github.com"),
             HttpClientRequest.acceptJson,
-            HttpClientRequest.bearerToken(token),
+            HttpClientRequest.bearerToken(connection.token),
             HttpClientRequest.setHeaders({
               "user-agent": "jj-octo",
               "x-github-api-version": "2022-11-28",
@@ -137,6 +147,7 @@ export const GitHubLive = (
       // the field it rejected, or the proxy naming a route a cloud session can't use.
       const send = (request: HttpClientRequest.HttpClientRequest) =>
         client.execute(request).pipe(
+          Effect.provideService(FetchHttpClient.RequestInit, requestInit),
           Effect.flatMap((response) =>
             response.status < 400
               ? Effect.succeed(response)

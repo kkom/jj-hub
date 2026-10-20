@@ -15,8 +15,8 @@
   ],
   "type": "module",
   "scripts": {
-    "build": "bun build src/main.ts --target=node --outfile dist/jj-octo.js && chmod +x dist/jj-octo.js",
-    "check": "bun run --sequential \"check:*\" && bun run test",
+    "build": "bun build src/main.ts --target=bun --outfile dist/jj-octo.js && chmod +x dist/jj-octo.js",
+    "check": "bun run --sequential \"check:*\" && bun run test && bun run build",
     "check:format": "oxfmt --check .",
     "check:lint": "oxlint .",
     "check:types": "tsc",
@@ -27,10 +27,10 @@
     "release:major": "bun pm version major --no-git-tag-version",
     "release:minor": "bun pm version minor --no-git-tag-version",
     "release:patch": "bun pm version patch --no-git-tag-version",
-    "test": "bun run build && bun test ./src"
+    "test": "bun test ./src"
   },
   "devDependencies": {
-    "@effect/platform-node": "4.0.5",
+    "@effect/platform-bun": "4.0.5",
     "@octokit/openapi-types": "29.0.1",
     "@tsconfig/strictest": "2.0.8",
     "@types/bun": "1.4.3",
@@ -38,12 +38,10 @@
     "oxfmt": "0.73.0",
     "oxlint": "1.88.0",
     "oxlint-tsgolint": "7.0.2004",
-    "typescript": "7.0.2",
-    "undici": "8.12.2"
+    "typescript": "7.0.2"
   },
   "engines": {
-    "bun": ">=1.4.0",
-    "node": ">=22.19.0"
+    "bun": ">=1.4.0"
   },
   "packageManager": "bun@1.4.3"
 }
