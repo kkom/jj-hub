@@ -12,9 +12,13 @@ import {
 
 afterAll(removeScratchRepositories);
 
-// The file `bun run build` writes, which npm publishes. `bun run test` builds it first. The tests
-// run it as an installed command does, through its shebang.
-const built = path.join(import.meta.dirname, "..", "dist", "jj-octo.js");
+// What `bun run test` builds first: the file npm publishes, run through its shebang as an
+// installed command is, and the standalone executable, which carries Bun, for this platform.
+const dist = path.join(import.meta.dirname, "..", "dist");
+const builds = [
+  { command: [path.join(dist, "jj-octo.js")], name: "the built file" },
+  { command: [path.join(dist, "jj-octo")], name: "the standalone executable" },
+];
 
 // The environment of the tests, without the proxy settings it may hold, which would otherwise
 // route requests past the proxy under test.
@@ -25,10 +29,11 @@ const inherited = Object.fromEntries(
 
 // Asynchronous, so the proxy in this process can answer while the file runs.
 const run = async (
+  command: readonly string[],
   args: readonly string[],
   options: { readonly cwd: string; readonly env: Readonly<Record<string, string>> },
 ) => {
-  const child = Bun.spawn([built, ...args], {
+  const child = Bun.spawn([...command, ...args], {
     cwd: options.cwd,
     env: { ...inherited, ...options.env },
     stderr: "pipe",
@@ -69,9 +74,9 @@ const checkoutOfA = () => {
   return { cwd, env: isolatedEnv(path.dirname(cwd)), repository };
 };
 
-describe("the built file", () => {
+describe.each(builds)("$name", ({ command }) => {
   it("prints its version", async () => {
-    expect(await run(["--version"], { cwd: process.cwd(), env: {} })).toBe(
+    expect(await run(command, ["--version"], { cwd: process.cwd(), env: {} })).toBe(
       `jj gh v${manifest.version}\n`,
     );
   });
@@ -84,7 +89,7 @@ describe("the built file", () => {
       git("http.https://github.com/.proxy", proxy.url);
       git("http.https://github.com/.sslCAInfo", proxy.caFile);
       repository.jj("config", "set", "--repo", "jj-octo.github-auth", "git-proxy");
-      return run(["log"], { cwd, env });
+      return run(command, ["log"], { cwd, env });
     });
     expect(received).toStrictEqual(logOfA);
   });
@@ -92,7 +97,7 @@ describe("the built file", () => {
   it("reads pull requests through the proxy HTTPS_PROXY names", async () => {
     const received = await throughProxy("api.github.com", pullRequestOfA, (proxy) => {
       const { cwd, env } = checkoutOfA();
-      return run(["log"], {
+      return run(command, ["log"], {
         cwd,
         env: {
           ...env,
@@ -113,7 +118,7 @@ describe("the built file", () => {
       // Excluded, so jj doesn't record it.
       appendFileSync(path.join(cwd, ".git", "info", "exclude"), ".env\n");
       writeFileSync(path.join(cwd, ".env"), "NO_PROXY=*\n");
-      return run(["log"], {
+      return run(command, ["log"], {
         cwd,
         env: {
           ...env,
@@ -137,7 +142,7 @@ describe("the built file", () => {
         path.join(cwd, "preload.ts"),
         'console.error("ran the checkout\'s bunfig.toml preload");\nprocess.exit(3);\n',
       );
-      return run(["log"], {
+      return run(command, ["log"], {
         cwd,
         env: {
           ...env,
