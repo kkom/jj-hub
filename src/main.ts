@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env -S bun --no-env-file
 import { BunRuntime, BunServices } from "@effect/platform-bun";
 import { Effect } from "effect";
 import { CliConfig, Command, GlobalFlag } from "effect/cli";
