@@ -90,6 +90,12 @@
       minimumReleaseAge: null,
     },
     {
+      // engines states the oldest runtime a published package supports, which we raise by hand.
+      // rangeStrategy "pin" applies to it too, and would demand exactly the newest release.
+      matchDepTypes: ["engines"],
+      enabled: false,
+    },
+    {
       matchPackageNames: ["@types/bun", "bun", "oven-sh/bun"],
       groupName: "bun",
     },
