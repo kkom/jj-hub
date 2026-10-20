@@ -32,11 +32,15 @@ Then run `jj-octo init` once in each checkout. It makes the checkout a jj reposi
 
 `jj-octo` reads the repository from the `origin` remote. It takes its token from `GH_TOKEN` or `GITHUB_TOKEN`, and otherwise from `gh auth token`. It sends requests through the proxy that `HTTPS_PROXY` names, and trusts the certificate authorities in `NODE_EXTRA_CA_CERTS` as well as Bun's own.
 
-## In a Claude Code cloud session
+## In Claude Code cloud sessions
 
-In a [Claude Code](https://claude.com/claude-code) cloud session, a proxy carries all traffic to GitHub. It allows REST calls only for the session's repositories, and blocks GraphQL. That's why `jj-octo` uses only GitHub's REST API, while `gh pr` and other tools that depend on GraphQL fail there.
+A Claude Code [cloud session](https://code.claude.com/docs/en/claude-code-on-the-web) runs in an Anthropic-hosted environment, or in your organization's self-hosted environment. Each needs its own setup.
 
-mise can't read this repository's releases there, since it reads them through the GitHub API. Install the npm package instead:
+### In an Anthropic-hosted environment
+
+There, the [GitHub proxy](https://code.claude.com/docs/en/cloud-environments#github-proxy) carries all GitHub traffic. It serves GitHub API requests only for the repositories attached to the session, and rejects GraphQL requests. That's why `jj-octo` uses only GitHub's REST API, while `gh pr` and other tools that depend on GraphQL fail there.
+
+mise reads this repository's releases through the GitHub API, so it can't install them unless the session has this repository attached. Install the npm package instead:
 
 ```toml
 [tools]
@@ -48,11 +52,11 @@ version = "X.Y.Z"
 allow_low_downloads = true
 ```
 
-The session sets `HTTPS_PROXY`, `NODE_EXTRA_CA_CERTS` and a placeholder `GH_TOKEN`. Its proxy replaces the placeholder with real credentials. So `jj-octo` works there with its default settings.
+The session sets `HTTPS_PROXY`, `NODE_EXTRA_CA_CERTS`, and `GH_TOKEN` to the placeholder `proxy-injected`. The GitHub proxy replaces the placeholder with your real credentials. So `jj-octo` works there with its default settings.
 
-## In a Claude Code self-hosted environment
+### In a self-hosted environment
 
-A self-hosted runner started with `--use-anthropic-git-proxy` sends git through Anthropic's git proxy, which adds the session user's credentials. The sandbox then holds no GitHub token, and only git's config names the proxy. There, have `jj-octo` use the same proxy:
+A [self-hosted runner](https://code.claude.com/docs/en/self-hosted-environments-deploy#use-the-anthropic-git-proxy) started with `--use-anthropic-git-proxy` sends git through the Anthropic git proxy. That proxy adds the GitHub credentials of the session's creator. The session then holds no GitHub token, and only git's config names the proxy. There, have `jj-octo` use the same proxy:
 
 ```
 jj config set --repo jj-octo.github-auth git-proxy
