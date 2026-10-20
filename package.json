@@ -16,7 +16,7 @@
   "type": "module",
   "scripts": {
     "build": "bun build src/main.ts --target=bun --outfile dist/jj-octo.js && chmod +x dist/jj-octo.js",
-    "check": "bun run --sequential \"check:*\" && bun run test && bun run build",
+    "check": "bun run --sequential \"check:*\" && bun run test",
     "check:format": "oxfmt --check .",
     "check:lint": "oxlint .",
     "check:types": "tsc",
@@ -27,7 +27,7 @@
     "release:major": "bun pm version major --no-git-tag-version",
     "release:minor": "bun pm version minor --no-git-tag-version",
     "release:patch": "bun pm version patch --no-git-tag-version",
-    "test": "bun test ./src"
+    "test": "bun run build && bun test ./src"
   },
   "devDependencies": {
     "@effect/platform-bun": "4.0.5",
