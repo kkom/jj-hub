@@ -1,0 +1,98 @@
+name: Branch cleanup
+
+# Deletes every branch whose last commit is more than two weeks old, unless an open pull
+# request has it as its head or its base. A branch low in a stack is the base of the pull
+# request above it, and GitHub closes that pull request when its base is deleted. jj
+# rewrites a commit's committer date on every rebase, so a stack kept in sync with main
+# stays younger than the cutoff. On a pull request it lists what it would delete and
+# deletes nothing.
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/branch-cleanup.yaml"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/branch-cleanup.yaml"
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cleanup:
+    name: Cleanup
+    runs-on: ubuntu-latest
+
+    concurrency:
+      group: branch-cleanup
+
+    permissions:
+      contents: write
+      pull-requests: read
+
+    steps:
+      - name: Delete stale branches
+        shell: bash
+        env:
+          CUTOFF_DAYS: "14"
+          DRY_RUN: ${{ github.event_name == 'pull_request' }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          CUTOFF="$(date --utc --date "${CUTOFF_DAYS} days ago" +%Y-%m-%dT%H:%M:%SZ)"
+          export CUTOFF
+
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=100" \
+            --jq '.[] | .head.ref, .base.ref' \
+            | sort --unique > "${RUNNER_TEMP}/open"
+
+          # GitHub writes committedDate in UTC with a Z suffix, as CUTOFF is written, so
+          # comparing the strings compares the times
+          gh api graphql --paginate \
+            --raw-field owner="${GITHUB_REPOSITORY%/*}" \
+            --raw-field repo="${GITHUB_REPOSITORY#*/}" \
+            --raw-field query='
+              query($owner: String!, $repo: String!, $endCursor: String) {
+                repository(owner: $owner, name: $repo) {
+                  defaultBranchRef { name }
+                  refs(refPrefix: "refs/heads/", first: 100, after: $endCursor) {
+                    nodes { name target { ... on Commit { committedDate } } }
+                    pageInfo { hasNextPage endCursor }
+                  }
+                }
+              }' \
+            --jq '.data.repository as $repository
+              | $repository.refs.nodes[]
+              | select(.name != $repository.defaultBranchRef.name and .target.committedDate < env.CUTOFF)
+              | .name' \
+            | sort --unique > "${RUNNER_TEMP}/old"
+
+          mapfile -t stale < <(comm -23 "${RUNNER_TEMP}/old" "${RUNNER_TEMP}/open")
+
+          failed=()
+          for branch in "${stale[@]}"; do
+            echo "${branch}"
+            if [ "${DRY_RUN}" != true ]; then
+              gh api --method DELETE "repos/${GITHUB_REPOSITORY}/git/refs/heads/${branch}" || failed+=("${branch}")
+            fi
+          done
+
+          {
+            if [ "${DRY_RUN}" = true ]; then
+              echo "### Would delete ${#stale[@]} branches with no commit since ${CUTOFF}"
+            else
+              echo "### Deleted $(( ${#stale[@]} - ${#failed[@]} )) branches with no commit since ${CUTOFF}"
+            fi
+            if [ "${#stale[@]}" -gt 0 ]; then
+              echo
+              printf -- '- `%s`\n' "${stale[@]}"
+            fi
+          } >>"${GITHUB_STEP_SUMMARY}"
+
+          if [ "${#failed[@]}" -gt 0 ]; then
+            printf '::error::Failed to delete %s\n' "${failed[@]}"
+            exit 1
+          fi
