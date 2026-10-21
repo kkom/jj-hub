@@ -50,8 +50,6 @@ jj config set --repo jj-octo.ignore-claude-code-footer true
 
 There, the [GitHub proxy](https://code.claude.com/docs/en/cloud-environments#github-proxy) carries all GitHub traffic. It serves GitHub API requests only for the repositories attached to the session, and rejects GraphQL requests. That's why `jj-octo` uses only GitHub's REST API, while `gh pr` and other tools that depend on GraphQL fail there.
 
-mise 2026.10.11 and later install `jj-octo` there, since they read release metadata from mise's own mirror rather than the GitHub API.
-
 The session sets `HTTPS_PROXY`, `NODE_EXTRA_CA_CERTS`, and `GH_TOKEN` to the placeholder `proxy-injected`. The GitHub proxy replaces the placeholder with your real credentials. So `jj-octo` works there with its default settings.
 
 ### In a self-hosted environment
