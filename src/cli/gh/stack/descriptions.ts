@@ -2,7 +2,7 @@ import { Console, Data, Effect, Match, Option } from "effect";
 
 import { Git, type GitFailed } from "../../../clients/git";
 import type { PullRequest } from "../../../clients/github/types";
-import { Jj, type JjFailed } from "../../../clients/jj";
+import { Jj, JjFailed } from "../../../clients/jj";
 import { bookmarkRevset, lines, readLog, type StackChange } from "./changes";
 import { descriptionFrom, descriptionSyncFor, normalizedDescription } from "./plan";
 
@@ -11,9 +11,42 @@ export class DescriptionConflict extends Data.TaggedError("DescriptionConflict")
 }> {}
 
 interface DescriptionOptions {
+  readonly ignoreClaudeCodeFooter: boolean;
   readonly overwriteDescriptions: boolean;
   readonly pushedDescription: string;
 }
+
+/** The jj config key that says whether to leave out the Claude Code proxy's footer. */
+export const ignoreClaudeCodeFooterKey = "jj-octo.ignore-claude-code-footer";
+
+/**
+ * Reads `jj-octo.ignore-claude-code-footer` from the jj config. `true` compares descriptions
+ * without the footer that the GitHub proxy of a Claude Code cloud session appends to each pull
+ * request body it creates or edits. `false`, the default, compares them as they are.
+ */
+export const ignoresClaudeCodeFooter: Effect.Effect<boolean, JjFailed, Jj> = Effect.gen(
+  function* () {
+    const jj = yield* Jj;
+    // Jj fails for a key that has no value.
+    const value = (yield* jj
+      .read(["config", "get", ignoreClaudeCodeFooterKey])
+      .pipe(Effect.orElseSucceed(() => ""))).trim();
+    switch (value) {
+      case "":
+      case "false": {
+        return false;
+      }
+      case "true": {
+        return true;
+      }
+      default: {
+        return yield* new JjFailed({
+          message: `${ignoreClaudeCodeFooterKey} is ${JSON.stringify(value)}; set it to true or false`,
+        });
+      }
+    }
+  },
+);
 
 /** The description of each commit, by commit id, read in one command. */
 export const descriptionsOf = (
@@ -48,16 +81,18 @@ export const descriptionsOf = (
 export const syncDescription = (
   { bookmark, description }: StackChange,
   pullRequest: PullRequest,
-  { overwriteDescriptions, pushedDescription }: DescriptionOptions,
+  { ignoreClaudeCodeFooter, overwriteDescriptions, pushedDescription }: DescriptionOptions,
 ): Effect.Effect<Option.Option<string>, DescriptionConflict | GitFailed | JjFailed, Git | Jj> =>
   Effect.gen(function* () {
     const git = yield* Git;
     const jj = yield* Jj;
     const describe = (text: string) =>
       jj.run(["describe", "-r", bookmarkRevset(bookmark), "-m", text]);
-    const local = normalizedDescription(description);
-    const onGitHub = normalizedDescription(descriptionFrom(pullRequest));
-    const pushed = normalizedDescription(pushedDescription);
+    const local = normalizedDescription(description, { ignoreClaudeCodeFooter });
+    const onGitHub = normalizedDescription(descriptionFrom(pullRequest), {
+      ignoreClaudeCodeFooter,
+    });
+    const pushed = normalizedDescription(pushedDescription, { ignoreClaudeCodeFooter });
 
     return yield* Match.value(descriptionSyncFor({ local, onGitHub, pushed })).pipe(
       Match.tag("InSync", () => Effect.succeed(Option.none<string>())),

@@ -13,7 +13,12 @@ import {
   stackChanges,
   stackRevset,
 } from "./changes";
-import { type DescriptionConflict, descriptionsOf, syncDescription } from "./descriptions";
+import {
+  type DescriptionConflict,
+  descriptionsOf,
+  ignoresClaudeCodeFooter,
+  syncDescription,
+} from "./descriptions";
 import { basesFor, mustDissolve, registrationFor, titleAndBody } from "./plan";
 import { checkTrunk, type TrunkMismatch } from "./trunk";
 
@@ -109,6 +114,7 @@ const publish = (
     const pushedDescriptions = yield* descriptionsOf(
       bookmarks.flatMap((bookmark) => targets.get(bookmark)?.origin ?? []),
     );
+    const ignoreClaudeCodeFooter = yield* ignoresClaudeCodeFooter;
 
     // Before anything changes on GitHub, so a conflict in a description stops the whole submit.
     // One at a time, because rewording a change rewrites the ones above it.
@@ -120,6 +126,7 @@ const publish = (
         description: Option.isNone(entry.pullRequest)
           ? Option.none<string>()
           : yield* syncDescription(entry.change, entry.pullRequest.value, {
+              ignoreClaudeCodeFooter,
               overwriteDescriptions,
               pushedDescription:
                 (pushed === undefined ? undefined : pushedDescriptions.get(pushed)) ?? "",

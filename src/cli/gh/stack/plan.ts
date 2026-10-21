@@ -89,11 +89,19 @@ const claudeCodeFooter =
 
 /**
  * A description in the one spelling both sides are compared in. GitHub stores a body edited in
- * the browser with Windows line endings, and jj ends a description with a newline. The proxy's
- * footer is left out, since it returns on each edit made through the proxy.
+ * the browser with Windows line endings, and jj ends a description with a newline. With
+ * `ignoreClaudeCodeFooter`, the proxy's footer is left out, since it returns on each edit made
+ * through the proxy.
  */
-export const normalizedDescription = (description: string): string =>
-  descriptionFrom(titleAndBody(description.replaceAll("\r\n", "\n").replace(claudeCodeFooter, "")));
+export const normalizedDescription = (
+  description: string,
+  { ignoreClaudeCodeFooter }: { readonly ignoreClaudeCodeFooter: boolean },
+): string => {
+  const text = description.replaceAll("\r\n", "\n");
+  return descriptionFrom(
+    titleAndBody(ignoreClaudeCodeFooter ? text.replace(claudeCodeFooter, "") : text),
+  );
+};
 
 export type DescriptionSync =
   | { readonly _tag: "InSync" }
