@@ -1,7 +1,11 @@
 import { Context, Data, Effect, FileSystem, Layer, Path, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
-export class GitFailed extends Data.TaggedError("GitFailed")<{ readonly message: string }> {}
+export class GitFailed extends Data.TaggedError("GitFailed")<{
+  readonly message: string;
+  /** Git's exit code, where git ran and failed. */
+  readonly exitCode?: number;
+}> {}
 
 export class Git extends Context.Service<
   Git,
@@ -105,6 +109,7 @@ export const gitLayer = ({ cwd, env }: GitOptions = {}): Layer.Layer<
               return code === 0
                 ? stdout
                 : yield* new GitFailed({
+                    exitCode: code,
                     message: `git ${args.join(" ")} failed${stderr.trim() === "" ? "" : `: ${stderr.trim()}`}`,
                   });
             }),
@@ -120,3 +125,14 @@ export const gitLayer = ({ cwd, env }: GitOptions = {}): Layer.Layer<
   );
 
 export const GitLive = gitLayer();
+
+/** What a `git config` query prints, or an empty string where it finds no value. */
+export const gitConfig = (args: readonly string[]): Effect.Effect<string, GitFailed, Git> =>
+  Effect.gen(function* () {
+    const git = yield* Git;
+    const value = yield* git.read(["config", ...args]).pipe(
+      // Git exits 1 for a key it has no value for, and 128 for a config file it can't parse.
+      Effect.catch((error) => (error.exitCode === 1 ? Effect.succeed("") : Effect.fail(error))),
+    );
+    return value.trim();
+  });

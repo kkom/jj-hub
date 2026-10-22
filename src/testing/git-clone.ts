@@ -1,7 +1,8 @@
 import { writeFileSync } from "node:fs";
 import path from "node:path";
 
-import type { Layer } from "effect";
+import { BunServices } from "@effect/platform-bun";
+import { Effect, type FileSystem, Layer } from "effect";
 
 import type { Git } from "../clients/git";
 import type { Jj } from "../clients/jj";
@@ -24,12 +25,15 @@ export const gitClone = (
 ): {
   readonly git: (...args: readonly string[]) => string;
   readonly jj: (...args: readonly string[]) => string;
+  /** The jj config file that jj reads in place of the user's. */
+  readonly jjConfigFile: string;
   readonly layer: Layer.Layer<Git | Jj>;
   readonly layerAt: (directory: string) => Layer.Layer<Git | Jj>;
 } => {
   const root = scratchDirectory("clone-");
   const env = isolatedEnv(root);
-  writeFileSync(path.join(root, "config.toml"), "");
+  const jjConfigFile = env["JJ_CONFIG"] ?? "";
+  writeFileSync(jjConfigFile, "");
   const execute = executor(env);
   const checkout = path.join(root, "checkout");
   const origin = repository.git("remote", "get-url", "origin").trim();
@@ -39,7 +43,15 @@ export const gitClone = (
   return {
     git: (...args) => execute(checkout, ["git", ...args]),
     jj: (...args) => execute(checkout, ["jj", ...args]),
+    jjConfigFile,
     layer: layerAt(checkout, env),
     layerAt: (directory) => layerAt(directory, env),
   };
 };
+
+/** Runs the program with the git and jj clients of the layer, and the runtime's own services. */
+export const runIn = <A, E>(
+  layer: Layer.Layer<Git | Jj>,
+  program: Effect.Effect<A, E, FileSystem.FileSystem | Git | Jj>,
+): Promise<A> =>
+  Effect.runPromise(program.pipe(Effect.provide(Layer.merge(layer, BunServices.layer))));

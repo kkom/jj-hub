@@ -2,7 +2,7 @@ import { Console, Data, Effect, Match, Option } from "effect";
 
 import { Git, type GitFailed } from "../../../clients/git";
 import type { PullRequest } from "../../../clients/github/types";
-import { Jj, JjFailed } from "../../../clients/jj";
+import { Jj, type JjFailed, jjFlag } from "../../../clients/jj";
 import { bookmarkRevset, lines, readLog, type StackChange } from "./changes";
 import { descriptionFrom, descriptionSyncFor, normalizedDescription } from "./plan";
 
@@ -24,29 +24,8 @@ export const ignoreClaudeCodeFooterKey = "jj-octo.ignore-claude-code-footer";
  * without the footer that the GitHub proxy of a Claude Code cloud session appends to each pull
  * request body it creates or edits. `false`, the default, compares them as they are.
  */
-export const ignoresClaudeCodeFooter: Effect.Effect<boolean, JjFailed, Jj> = Effect.gen(
-  function* () {
-    const jj = yield* Jj;
-    // Jj fails for a key that has no value.
-    const value = (yield* jj
-      .read(["config", "get", ignoreClaudeCodeFooterKey])
-      .pipe(Effect.orElseSucceed(() => ""))).trim();
-    switch (value) {
-      case "":
-      case "false": {
-        return false;
-      }
-      case "true": {
-        return true;
-      }
-      default: {
-        return yield* new JjFailed({
-          message: `${ignoreClaudeCodeFooterKey} is ${JSON.stringify(value)}; set it to true or false`,
-        });
-      }
-    }
-  },
-);
+export const ignoresClaudeCodeFooter: Effect.Effect<boolean, JjFailed, Jj> =
+  jjFlag(ignoreClaudeCodeFooterKey);
 
 /** The description of each commit, by commit id, read in one command. */
 export const descriptionsOf = (
