@@ -19,7 +19,7 @@ export const checkTrunk = (branch: string): Effect.Effect<void, JjFailed | Trunk
   Effect.gen(function* () {
     if ((yield* commitsAt(`trunk() & present(${trunkRevset(branch)})`)).length === 0) {
       yield* new TrunkMismatch({
-        message: `trunk() isn't ${branch}@origin, GitHub's default branch; run \`jj gh init\``,
+        message: `trunk() isn't ${branch}@origin, GitHub's default branch; run \`jj-octo init\``,
       });
     }
   });

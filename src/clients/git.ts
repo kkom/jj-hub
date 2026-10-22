@@ -136,3 +136,23 @@ export const gitConfig = (args: readonly string[]): Effect.Effect<string, GitFai
     );
     return value.trim();
   });
+
+/**
+ * The checkout's top directory, its git directory and the repository's common git directory, as
+ * absolute paths. In a git worktree, the git directory isn't the common one.
+ */
+export const gitDirectories: Effect.Effect<
+  { readonly commonDirectory: string; readonly gitDirectory: string; readonly topLevel: string },
+  GitFailed,
+  Git
+> = Effect.gen(function* () {
+  const git = yield* Git;
+  const [topLevel = "", gitDirectory = "", commonDirectory = ""] = (yield* git.read([
+    "rev-parse",
+    "--path-format=absolute",
+    "--show-toplevel",
+    "--git-dir",
+    "--git-common-dir",
+  ])).split("\n");
+  return { commonDirectory, gitDirectory, topLevel };
+});

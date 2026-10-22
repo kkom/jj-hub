@@ -158,6 +158,8 @@
           { "from": "package", "name": ["Buffer", "Server"], "package": "@types/node" },
           // An intersection with a conditional type, which the rule can't resolve.
           "ResponseSchema",
+          // Readonly fields that hold effects, which the rule allows only at the top level.
+          { "from": "file", "name": "SetupStep", "path": "src/cli/gh/setup.ts" },
         ],
         "ignoreInferredTypes": true,
       },

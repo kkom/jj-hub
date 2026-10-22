@@ -116,3 +116,16 @@ export const jjFlag = (key: string): Effect.Effect<boolean, JjFailed, Jj> =>
       message: `${key} is ${JSON.stringify(value)}; set it to true or false`,
     });
   });
+
+/**
+ * Sets a value in the repository's jj config. Jj parses the value as TOML, so a string or an array
+ * goes in as JSON writes it, which is also TOML.
+ */
+export const setJjConfig = (
+  key: string,
+  value: string | readonly string[],
+): Effect.Effect<void, JjFailed, Jj> =>
+  Effect.gen(function* () {
+    const jj = yield* Jj;
+    yield* jj.run(["config", "set", "--repo", key, JSON.stringify(value)]);
+  });
