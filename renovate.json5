@@ -33,6 +33,10 @@
   prHourlyLimit: 0,
   schedule: ["after 11:30am and before 5:30pm every weekday"],
   rangeStrategy: "pin",
+  // Renovate otherwise counts any commit subject shaped like "<word>: <text>" as a conventional
+  // commit, and gives PRs semantic titles while those are most of main's last 20 commits. It
+  // finds a closed PR by its title, so each switch reopens every update a closed PR ignored.
+  semanticCommits: "disabled",
   customManagers: [
     {
       customType: "regex",
