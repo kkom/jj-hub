@@ -1,8 +1,8 @@
 import { Config, Effect, FileSystem, Option, Redacted } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
-import { Git } from "../git";
-import { Jj } from "../jj";
+import { type Git, gitConfig } from "../git";
+import { type Jj, jjConfig } from "../jj";
 import { GitHubFailed } from "./client";
 
 /** A proxy that requests to api.github.com go through, with the certificate authorities to trust. */
@@ -45,11 +45,9 @@ const ownToken = Effect.gen(function* () {
 /** A git setting for https://github.com, as `git config --get-urlmatch` resolves it. */
 const gitSetting = (name: string) =>
   Effect.gen(function* () {
-    const git = yield* Git;
-    // Git exits 1 for a setting it has no value for.
-    const value = (yield* git
-      .read(["config", "--get-urlmatch", name, "https://github.com"])
-      .pipe(Effect.orElseSucceed(() => ""))).trim();
+    const value = yield* gitConfig(["--get-urlmatch", name, "https://github.com"]).pipe(
+      Effect.mapError(({ message }) => new GitHubFailed({ message })),
+    );
     return value === "" ? Option.none<string>() : Option.some(value);
   });
 
@@ -99,11 +97,9 @@ export const connection: Effect.Effect<
   GitHubFailed,
   ChildProcessSpawner.ChildProcessSpawner | FileSystem.FileSystem | Git | Jj
 > = Effect.gen(function* () {
-  const jj = yield* Jj;
-  // Jj fails for a key that has no value.
-  const auth = (yield* jj
-    .read(["config", "get", authKey])
-    .pipe(Effect.orElseSucceed(() => ""))).trim();
+  const auth = yield* jjConfig(authKey).pipe(
+    Effect.mapError(({ message }) => new GitHubFailed({ message })),
+  );
   switch (auth) {
     case "":
     case "token": {

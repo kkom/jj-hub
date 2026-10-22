@@ -72,3 +72,47 @@ export const jjLayer = ({ cwd, env, quiet = false }: JjOptions = {}): Layer.Laye
   );
 
 export const JjLive = jjLayer();
+
+const ENTRY = String.raw`json(name) ++ " " ++ json(value) ++ "\n"`;
+
+/**
+ * A key's value in jj's config, or `undefined` where it has none. `jj config list` prints nothing
+ * for a key without a value, where `jj config get` fails.
+ */
+const readConfig = (key: string): Effect.Effect<unknown, JjFailed, Jj> =>
+  Effect.gen(function* () {
+    const jj = yield* Jj;
+    const output = yield* jj.read(["config", "list", key, "-T", ENTRY]);
+    const lines = output.split("\n").filter((line) => line !== "");
+    // For a table, jj lists the keys inside it.
+    const prefix = `${JSON.stringify(key)} `;
+    if (lines.some((line) => !line.startsWith(prefix))) {
+      return yield* new JjFailed({ message: `${key} is a table; set it to a single value` });
+    }
+    const [line] = lines;
+    return line === undefined ? undefined : (JSON.parse(line.slice(prefix.length)) as unknown);
+  });
+
+/** A string in jj's config, or an empty string where it has none. Fails on any other value. */
+export const jjConfig = (key: string): Effect.Effect<string, JjFailed, Jj> =>
+  Effect.gen(function* () {
+    const value = yield* readConfig(key);
+    if (value === undefined || typeof value === "string") {
+      return value ?? "";
+    }
+    return yield* new JjFailed({
+      message: `${key} is ${JSON.stringify(value)}; set it to a string`,
+    });
+  });
+
+/** A true-or-false value in jj's config, false where it has none. Fails on any other value. */
+export const jjFlag = (key: string): Effect.Effect<boolean, JjFailed, Jj> =>
+  Effect.gen(function* () {
+    const value = yield* readConfig(key);
+    if (value === undefined || typeof value === "boolean") {
+      return value === true;
+    }
+    return yield* new JjFailed({
+      message: `${key} is ${JSON.stringify(value)}; set it to true or false`,
+    });
+  });
