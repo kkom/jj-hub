@@ -1,6 +1,7 @@
 import { Command } from "effect/cli";
 
 import { withHelp } from "../command";
+import { doctorCommand } from "./doctor";
 import { initCommand } from "./init";
 import { logCommand } from "./log";
 import { mergeCommand } from "./merge";
@@ -8,7 +9,14 @@ import { submitCommand } from "./submit";
 import { syncCommand } from "./sync";
 
 export const jjGhCommand = Command.make("jj gh").pipe(
-  Command.withSubcommands([initCommand, logCommand, mergeCommand, submitCommand, syncCommand]),
+  Command.withSubcommands([
+    doctorCommand,
+    initCommand,
+    logCommand,
+    mergeCommand,
+    submitCommand,
+    syncCommand,
+  ]),
   withHelp(
     "Commands for publishing jj changes as GitHub pull requests",
     "A stack is a chain of changes, each published as one pull request on the branch its bookmark names. Each pull request targets the branch of the change below it, so it shows only that change's diff. A single change is a stack of one, and is published as an ordinary pull request.",
