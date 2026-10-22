@@ -1,7 +1,7 @@
 import { Data, Effect, FileSystem } from "effect";
 
 import { Git, GitFailed, gitConfig, gitDirectories } from "../../clients/git";
-import { Jj, type JjFailed, jjConfig, setJjConfig } from "../../clients/jj";
+import { Jj, type JjFailed, jjConfig, readJjConfig, setJjConfig } from "../../clients/jj";
 import { commitsAt } from "./stack/changes";
 import { trunkRevset } from "./stack/trunk";
 
@@ -159,21 +159,16 @@ const trunk = (branchOnOrigin: Effect.Effect<string, GitFailed, Git>): SetupStep
   }),
 });
 
-const ALIAS = ["util", "exec", "--", "jj-octo"];
-
-/** The `jj gh` alias. Jj reads aliases from user and repository config, never from a tracked file. */
+/**
+ * The `jj gh` alias, set to run jj-octo from `PATH` where the repository has none. One that runs
+ * another build stays. Jj reads aliases from user and repository config, never from a tracked file.
+ */
 const alias: SetupStep = {
-  check: Effect.gen(function* () {
-    const jj = yield* Jj;
-    // The repository's own config, where `fix` writes, rather than one that a user's config shadows.
-    const value = yield* jj.read(["config", "list", "--repo", "aliases.gh", "-T", "value"]);
-    // Jj prints an array of strings as TOML, which is also JSON.
-    const current = yield* Effect.try(() => JSON.stringify(JSON.parse(value))).pipe(
-      Effect.orElseSucceed(() => ""),
-    );
-    return current === JSON.stringify(ALIAS) ? undefined : forInit("`jj gh` doesn't run jj-octo");
-  }),
-  fix: setJjConfig("aliases.gh", ALIAS),
+  // The repository's config, where `fix` writes, rather than one that the user's config shadows.
+  check: Effect.map(readJjConfig("aliases.gh", { repo: true }), (value) =>
+    value === undefined ? forInit("`jj gh` isn't set up") : undefined,
+  ),
+  fix: setJjConfig("aliases.gh", ["util", "exec", "--", "jj-octo"]),
 };
 
 /**

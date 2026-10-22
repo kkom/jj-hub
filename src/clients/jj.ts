@@ -77,12 +77,17 @@ const ENTRY = String.raw`json(name) ++ " " ++ json(value) ++ "\n"`;
 
 /**
  * A key's value in jj's config, or `undefined` where it has none. `jj config list` prints nothing
- * for a key without a value, where `jj config get` fails.
+ * for a key without a value, where `jj config get` fails. `repo` reads the repository's config
+ * alone, which the user's config doesn't shadow.
  */
-const readConfig = (key: string): Effect.Effect<unknown, JjFailed, Jj> =>
+export const readJjConfig = (
+  key: string,
+  { repo = false }: { readonly repo?: boolean } = {},
+): Effect.Effect<unknown, JjFailed, Jj> =>
   Effect.gen(function* () {
     const jj = yield* Jj;
-    const output = yield* jj.read(["config", "list", key, "-T", ENTRY]);
+    const scope = repo ? ["--repo"] : [];
+    const output = yield* jj.read(["config", "list", ...scope, key, "-T", ENTRY]);
     const lines = output.split("\n").filter((line) => line !== "");
     // For a table, jj lists the keys inside it.
     const prefix = `${JSON.stringify(key)} `;
@@ -96,7 +101,7 @@ const readConfig = (key: string): Effect.Effect<unknown, JjFailed, Jj> =>
 /** A string in jj's config, or an empty string where it has none. Fails on any other value. */
 export const jjConfig = (key: string): Effect.Effect<string, JjFailed, Jj> =>
   Effect.gen(function* () {
-    const value = yield* readConfig(key);
+    const value = yield* readJjConfig(key);
     if (value === undefined || typeof value === "string") {
       return value ?? "";
     }
@@ -108,7 +113,7 @@ export const jjConfig = (key: string): Effect.Effect<string, JjFailed, Jj> =>
 /** A true-or-false value in jj's config, false where it has none. Fails on any other value. */
 export const jjFlag = (key: string): Effect.Effect<boolean, JjFailed, Jj> =>
   Effect.gen(function* () {
-    const value = yield* readConfig(key);
+    const value = yield* readJjConfig(key);
     if (value === undefined || typeof value === "boolean") {
       return value === true;
     }
