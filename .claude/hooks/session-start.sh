@@ -6,8 +6,9 @@
 # session-start-phases: trunk tools
 #
 # `jj gh` runs this repository's CLI from source, so a change to it takes effect in the
-# next command. `init` sets the alias to the released `jj-octo`, so it's pointed back here
-# afterwards. The CLI's dependencies are installed first, since `init` runs from source.
+# next command. `init` sets the alias to the released `jj-octo` where the checkout has none,
+# so it's pointed back here afterwards. The CLI's dependencies are installed first, since
+# `init` runs from source.
 
 set -euo pipefail
 

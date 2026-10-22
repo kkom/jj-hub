@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from "bun:test";
-import { existsSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import { Effect, type Layer } from "effect";
@@ -41,6 +41,25 @@ describe("init", () => {
       "cloner@example.com",
     );
     expect(clone.jj("config", "get", "aliases.gh")).toContain("jj-octo");
+  });
+
+  it("keeps a `jj gh` alias that runs another build", async () => {
+    const clone = gitClone(scratchRepository());
+    clone.jj("git", "init", "--colocate");
+    clone.jj("config", "set", "--repo", "aliases.gh", '["util", "exec", "--", "bun", "main.ts"]');
+    await initIn(clone.layer);
+    expect(clone.jj("config", "get", "aliases.gh")).toBe(
+      '["util", "exec", "--", "bun", "main.ts"]\n',
+    );
+  });
+
+  it("sets the repository's `jj gh` alias where only the user's config has one", async () => {
+    const clone = gitClone(scratchRepository());
+    writeFileSync(clone.jjConfigFile, 'aliases.gh = ["gh"]\n');
+    await initIn(clone.layer);
+    expect(clone.jj("config", "list", "--repo", "aliases.gh")).toBe(
+      'aliases.gh = ["util","exec","--","jj-octo"]\n',
+    );
   });
 
   it("copies a name that isn't a bare TOML value, such as a bot's", async () => {

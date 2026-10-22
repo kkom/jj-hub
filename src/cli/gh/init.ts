@@ -43,7 +43,7 @@ export const initCommand = Command.make("init", {}, () => asUserError(init)).pip
     "Set up a git checkout for the other commands",
     "Makes it a jj repository colocated with git, unless it already is one, and copies git's name and email into the repository's jj config where jj has none. Where neither has them, set them with `jj config set --user`.",
     "Reads the default branch from `origin`, fetches and tracks it, and sets `trunk()` to it in the repository's config. jj's own `trunk()` guesses from branch names, so without this a default branch it doesn't guess would be the base of pull requests but not of local rebases. `submit`, `merge` and `sync` check that the two agree.",
-    "Sets the `jj gh` alias to run `jj-octo` from `PATH`, in the repository's config. Set it again afterwards to run another build.",
+    "Sets the `jj gh` alias to run `jj-octo` from `PATH`, in the repository's config, unless the repository has one, such as one that runs another build.",
     "Needs no GitHub token. Running it again changes nothing that is already set up. Run it again after the default branch changes on GitHub. Fails with what it couldn't set up, after setting up the rest. Where it can't make a colocated jj repository, such as in a git worktree, it sets up nothing else.",
   ),
 );
