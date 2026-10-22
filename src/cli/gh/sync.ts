@@ -281,7 +281,7 @@ export const syncCommand = Command.make("sync", {}, () =>
     "Fetches, then rebases every change that isn't merged yet onto the trunk, keeping each on the changes below it. A change whose pull request GitHub merged is abandoned and its bookmark forgotten, unless it was edited after the merge.",
     "A stack that would conflict with the trunk is left where it was, and named. Rebase it yourself with `jj rebase` when you want to resolve it. The rest of a stack whose changes merged is rebased even where it conflicts, and the conflict is recorded in the change.",
     "Commits added to a branch on GitHub are squashed into the branch's local change, whether or not that change was also edited locally. Where GitHub only rebased a branch, the local change is kept.",
-    "Fails before fetching if `trunk()` isn't GitHub's default branch, which `jj gh init` sets.",
+    "Fails before fetching if `trunk()` isn't GitHub's default branch, which `jj-octo init` sets.",
     "Pushes nothing. Run `jj gh submit` to update the pull requests of a change and the ones below it.",
   ),
 );
