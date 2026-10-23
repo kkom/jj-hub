@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from "bun:test";
 
-import { Effect, Layer, Option } from "effect";
+import { Effect, Option } from "effect";
 
 import {
   addCommitOnGitHub,
@@ -9,7 +9,7 @@ import {
   rewriteElsewhere,
   squashMergeOnGitHub,
 } from "../../testing/branch-changes";
-import { fakeGitHub } from "../../testing/fake-github";
+import { fakeGitHub, inRepository } from "../../testing/fake-github";
 import {
   pushedStack,
   removeScratchRepositories,
@@ -23,22 +23,14 @@ afterAll(removeScratchRepositories);
 // GitHub reports the pull requests `squashMergeOnGitHub` merged.
 const syncing = (repository: ScratchRepository) =>
   sync().pipe(
-    Effect.provide(
-      Layer.merge(
-        repository.layer,
-        fakeGitHub({}, Option.none(), { mergedHeads: repository.mergedHeads }).layer,
-      ),
+    inRepository(
+      repository,
+      fakeGitHub({}, Option.none(), { mergedHeads: repository.mergedHeads }),
     ),
   );
 
 const syncIn = (repository: ScratchRepository): Promise<void> =>
   Effect.runPromise(syncing(repository));
-
-const files = (repository: ScratchRepository, revision: string): readonly string[] =>
-  repository
-    .jj("file", "list", "-r", revision)
-    .split("\n")
-    .filter((file) => file !== "");
 
 // Changes a file of the change `a`, which the working copy sits two changes above.
 const editLocally = (repository: ScratchRepository): void => {
@@ -60,8 +52,8 @@ describe("sync", () => {
     const pushed = repository.branches();
     moveTrunkOnGitHub(repository);
     await syncIn(repository);
-    expect(files(repository, "b")).toContain("trunk.txt");
-    expect(files(repository, "c")).toContain("trunk.txt");
+    expect(repository.files("b")).toContain("trunk.txt");
+    expect(repository.files("c")).toContain("trunk.txt");
     expect(repository.branches()).toEqual({ ...pushed, main: repository.branches()["main"] ?? "" });
   });
 
@@ -74,7 +66,7 @@ describe("sync", () => {
     await syncIn(repository);
     expect(repository.jj("log", "--no-graph", "-r", "conflicts()", "-T", "change_id")).toBe("");
     expect(repository.jj("log", "--no-graph", "-r", "c-", "-T", "description")).toBe("base\n");
-    expect(files(repository, "b")).toContain("trunk.txt");
+    expect(repository.files("b")).toContain("trunk.txt");
   });
 
   // GitHub can delete a merged branch after the fetch, which leaves its bookmark on the trunk.
@@ -99,7 +91,7 @@ describe("sync", () => {
     await syncIn(repository);
     expect(repository.log()).toEqual(["c []"]);
     expect(repository.jj("log", "--no-graph", "-r", "conflicts()", "-T", "description")).toBe("");
-    expect(files(repository, "@")).toEqual(["a.txt", "b.txt", "base.txt", "c.txt", "trunk.txt"]);
+    expect(repository.files("@")).toEqual(["a.txt", "b.txt", "base.txt", "c.txt", "trunk.txt"]);
     expect(repository.jj("bookmark", "list", "--all-remotes", "a", "b")).toBe("");
   });
 
@@ -108,14 +100,14 @@ describe("sync", () => {
     editLocally(repository);
     await syncIn(repository);
     expect(repository.log()).toEqual(["a [a]", "b [b]"]);
-    expect(files(repository, "a")).toEqual(["a.txt", "base.txt", "local.txt"]);
+    expect(repository.files("a")).toEqual(["a.txt", "base.txt", "local.txt"]);
   });
 
   it("takes the rest of a stack as GitHub rebased it after a merge", async () => {
     squashMergeOnGitHub(repository, "a", { above: ["b"] });
     await syncIn(repository);
     expect(repository.log()).toEqual(["b [b]"]);
-    expect(files(repository, "b")).toEqual(["a.txt", "b.txt", "base.txt"]);
+    expect(repository.files("b")).toEqual(["a.txt", "b.txt", "base.txt"]);
   });
 
   describe("when a branch changed on GitHub", () => {
@@ -123,7 +115,7 @@ describe("sync", () => {
       addCommitOnGitHub(repository, "a");
       await syncIn(repository);
       expect(repository.log()).toEqual(["a [a]", "b [b]"]);
-      expect(files(repository, "a")).toEqual(["a.txt", "base.txt", "suggestion.txt"]);
+      expect(repository.files("a")).toEqual(["a.txt", "base.txt", "suggestion.txt"]);
     });
 
     it("folds a commit GitHub added into a local change that was edited too", async () => {
@@ -131,7 +123,7 @@ describe("sync", () => {
       addCommitOnGitHub(repository, "a");
       await syncIn(repository);
       expect(repository.log()).toEqual(["a [a]", "b [b]"]);
-      expect(files(repository, "a")).toEqual(["a.txt", "base.txt", "local.txt", "suggestion.txt"]);
+      expect(repository.files("a")).toEqual(["a.txt", "base.txt", "local.txt", "suggestion.txt"]);
     });
 
     it("folds commits GitHub added to two branches of one stack", async () => {
@@ -139,8 +131,8 @@ describe("sync", () => {
       addCommitOnGitHub(repository, "b", "for-b.txt");
       await syncIn(repository);
       expect(repository.log()).toEqual(["a [a]", "b [b]"]);
-      expect(files(repository, "a")).toEqual(["a.txt", "base.txt", "for-a.txt"]);
-      expect(files(repository, "b")).toEqual([
+      expect(repository.files("a")).toEqual(["a.txt", "base.txt", "for-a.txt"]);
+      expect(repository.files("b")).toEqual([
         "a.txt",
         "b.txt",
         "base.txt",
@@ -153,7 +145,7 @@ describe("sync", () => {
       rebaseOnGitHub(repository, "a");
       await syncIn(repository);
       expect(repository.log()).toEqual(["a [a]", "b [b]"]);
-      expect(files(repository, "b")).toEqual(["a.txt", "b.txt", "base.txt", "trunk.txt"]);
+      expect(repository.files("b")).toEqual(["a.txt", "b.txt", "base.txt", "trunk.txt"]);
     });
 
     it("keeps an edited local change where GitHub only rebased the branch", async () => {
@@ -161,7 +153,7 @@ describe("sync", () => {
       rebaseOnGitHub(repository, "a");
       await syncIn(repository);
       expect(repository.log()).toEqual(["a [a]", "b [b]"]);
-      expect(files(repository, "a")).toEqual(["a.txt", "base.txt", "local.txt", "trunk.txt"]);
+      expect(repository.files("a")).toEqual(["a.txt", "base.txt", "local.txt", "trunk.txt"]);
     });
 
     // Another checkout's commits keep the ids of the local changes, so a change that isn't
@@ -175,7 +167,7 @@ describe("sync", () => {
       const failure = await Effect.runPromise(Effect.flip(syncing(repository)));
       expect(failure.message).toContain("weren't combined:\nb\na\n");
       expect(repository.jj("log", "--no-graph", "-r", "conflicts()", "-T", "change_id")).toBe("");
-      expect(files(repository, "@")).toEqual([
+      expect(repository.files("@")).toEqual([
         "a.txt",
         "b.txt",
         "base.txt",
@@ -189,7 +181,7 @@ describe("sync", () => {
       rebaseOnGitHub(repository, "a", { extra: true });
       const failure = await Effect.runPromise(Effect.flip(syncing(repository)));
       expect(failure.message).toContain("weren't combined:\na\n");
-      expect(files(repository, "b")).toContain("trunk.txt");
+      expect(repository.files("b")).toContain("trunk.txt");
       const check = await Effect.runPromise(
         Effect.flip(stackChanges("@")).pipe(Effect.provide(repository.layer)),
       );

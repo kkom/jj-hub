@@ -1,8 +1,8 @@
 import { afterAll, describe, expect, it } from "bun:test";
 
-import { Effect, Layer, Option } from "effect";
+import { Effect, Option } from "effect";
 
-import { fakeGitHub, openPullRequest, stackOf } from "../../../testing/fake-github";
+import { fakeGitHub, inRepository, openPullRequest, stackOf } from "../../../testing/fake-github";
 import {
   pushedStack,
   removeScratchRepositories,
@@ -17,10 +17,7 @@ const submitIn = (
   repository: ScratchRepository,
   github: ReturnType<typeof fakeGitHub>,
   { draft = true, overwriteDescriptions = false, revision = "@" } = {},
-) =>
-  submit(revision, { draft, overwriteDescriptions }).pipe(
-    Effect.provide(Layer.merge(repository.layer, github.layer)),
-  );
+) => submit(revision, { draft, overwriteDescriptions }).pipe(inRepository(repository, github));
 
 const description = (repository: ScratchRepository, revision: string): string =>
   repository.jj("log", "--no-graph", "-r", revision, "-T", "description").trimEnd();

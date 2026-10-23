@@ -1,5 +1,6 @@
 import { Effect, Layer, Option } from "effect";
 
+import type { Git } from "../clients/git";
 import { GitHub } from "../clients/github/client";
 import {
   type PullRequest,
@@ -8,6 +9,8 @@ import {
   type RemoteStack,
   StackNumberSchema,
 } from "../clients/github/types";
+import type { Jj } from "../clients/jj";
+import type { ScratchRepository } from "./scratch-repository";
 
 interface FakeGitHubOptions {
   /** The head commit of each merged pull request from the branch. None by default. */
@@ -93,3 +96,9 @@ export const openPullRequest = (base: string, number: number, title: string): Pu
   number: PullRequestNumberSchema.make(number),
   title,
 });
+
+/** Runs a program against the scratch repository and the fake GitHub. */
+export const inRepository =
+  (repository: ScratchRepository, github: { readonly layer: Layer.Layer<GitHub> }) =>
+  <A, E>(program: Effect.Effect<A, E, Git | GitHub | Jj>): Effect.Effect<A, E> =>
+    program.pipe(Effect.provide(Layer.merge(repository.layer, github.layer)));

@@ -1,8 +1,8 @@
 import { afterAll, describe, expect, it } from "bun:test";
 
-import { Effect, Layer, Option } from "effect";
+import { Effect, Option } from "effect";
 
-import { fakeGitHub, openPullRequest } from "../../testing/fake-github";
+import { fakeGitHub, inRepository, openPullRequest } from "../../testing/fake-github";
 import { removeScratchRepositories, scratchRepository } from "../../testing/scratch-repository";
 import { log } from "./log";
 
@@ -18,9 +18,7 @@ describe("log", () => {
       { a: { ...openPullRequest("main", 1, "a"), draft: false }, b: openPullRequest("a", 2, "b") },
       Option.none(),
     );
-    const printed = await Effect.runPromise(
-      log("@").pipe(Effect.provide(Layer.merge(repository.layer, github.layer))),
-    );
+    const printed = await Effect.runPromise(log("@").pipe(inRepository(repository, github)));
     expect(printed).toEqual([
       "c  no pull request  not pushed",
       "b  #2 draft         changed since push",

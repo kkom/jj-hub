@@ -29,6 +29,8 @@ export interface ScratchRepository {
    * of the same person, whose pushes keep each change's id.
    */
   readonly elsewhere: (...args: readonly string[]) => string;
+  /** The files in the revision, sorted. */
+  readonly files: (revision: string) => readonly string[];
   /** Runs git in the clone standing in for GitHub. */
   readonly git: (...args: readonly string[]) => string;
   /** Runs jj in the repository, and returns what it printed. */
@@ -139,6 +141,7 @@ const open = (root: string): ScratchRepository => {
         }),
       ),
     elsewhere,
+    files: (revision) => lines(jj("file", "list", "-r", revision)),
     git,
     jj,
     layer: layerAt(repository, env),
