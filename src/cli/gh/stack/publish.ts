@@ -5,6 +5,9 @@ import { GitHub, type GitHubFailed } from "../../../clients/github/client";
 import type { PullRequestNumber, RemoteStack } from "../../../clients/github/types";
 import { Jj, type JjFailed } from "../../../clients/jj";
 import {
+  anyOf,
+  bookmarkRevset,
+  bookmarksAt,
   bookmarkTargets,
   changesIn,
   downstackChanges,
@@ -20,6 +23,8 @@ import {
   syncDescription,
 } from "./descriptions";
 import { basesFor, mustDissolve, registrationFor, titleAndBody } from "./plan";
+import type { NotCombined } from "./reconcile";
+import { type BranchesDeleted, syncStack } from "./sync-stack";
 import { checkedTrunk, type TrunkMismatch } from "./trunk";
 
 export class SeveralStacks extends Data.TaggedError("SeveralStacks")<{
@@ -86,6 +91,8 @@ export type PublishFailed =
   | NotAStack
   | SeveralStacks
   | TrunkMismatch;
+
+export type SubmitFailed = BranchesDeleted | NotCombined | PublishFailed;
 
 /**
  * Pushes the changes' bookmarks, opens the pull requests missing, sets their bases, and registers
@@ -195,14 +202,36 @@ const publish = (
     yield* register(dissolve ? Option.none() : existing, numbers);
   });
 
-/** Publishes the revision's change and the ones below it in its stack. */
+/**
+ * Publishes the revision's change and the ones below it in its stack. Syncs that stack first
+ * where any of its pull requests merged or any of its branches changed on GitHub, since pushing
+ * over either would drop what GitHub has.
+ */
 export const submit = (
   revision: string,
   options: Omit<PublishOptions, "trunk">,
-): Effect.Effect<void, PublishFailed, Git | GitHub | Jj> =>
+): Effect.Effect<void, SubmitFailed, Git | GitHub | Jj> =>
   Effect.gen(function* () {
     const trunk = yield* checkedTrunk;
-    yield* publish(yield* downstackChanges(revision), { ...options, trunk });
+    // Read first, so a stack that isn't one fails before the sync rewrites anything.
+    const downstack = yield* downstackChanges(revision);
+    if (!(yield* syncStack(revision, trunk))) {
+      yield* publish(downstack, { ...options, trunk });
+      return;
+    }
+    // The sync can drop merged changes and replace others with GitHub's, so the stack is found
+    // again by its bookmarks: the highest one left is its top.
+    const left = yield* bookmarksAt(
+      anyOf(downstack.map(({ bookmark }) => bookmarkRevset(bookmark))),
+    );
+    const top = downstack.findLast(({ bookmark }) => left.includes(bookmark));
+    if (top === undefined) {
+      yield* Console.error(
+        `nothing left to submit: no bookmark of the stack is left after the sync`,
+      );
+      return;
+    }
+    yield* publish(yield* downstackChanges(bookmarkRevset(top.bookmark)), { ...options, trunk });
   });
 
 /**
