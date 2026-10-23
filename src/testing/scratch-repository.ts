@@ -42,6 +42,8 @@ export interface ScratchRepository {
   readonly mergedHeads: (branch: string) => readonly string[];
   /** Records that GitHub merged a pull request from the branch, whose head was the commit. */
   readonly mergedOnGitHub: (branch: string, head: string) => void;
+  /** What the jj commands that `layer` ran to change something printed, in order. */
+  readonly printed: () => string;
   /** Adds one change per name on top of `main`, each with a file and a bookmark of that name. */
   readonly stack: (...names: readonly string[]) => void;
   /** Writes a file into the working copy of the second jj clone. */
@@ -93,12 +95,16 @@ export const executor =
     return result.stdout.toString();
   };
 
-/** The git and jj clients, running in a directory with the environment. */
+/**
+ * The git and jj clients, running in a directory with the environment. What jj commands that
+ * change something print goes to `printed`, rather than into the test's output.
+ */
 export const layerAt = (
   cwd: string,
   env: Readonly<Record<string, string>>,
+  printed: (text: string) => void,
 ): Layer.Layer<Git | Jj> =>
-  Layer.merge(gitLayer({ cwd, env }), jjLayer({ cwd, env, quiet: true })).pipe(
+  Layer.merge(gitLayer({ cwd, env }), jjLayer({ cwd, env, printed })).pipe(
     Layer.provide(BunServices.layer),
   );
 
@@ -131,6 +137,7 @@ const open = (root: string): ScratchRepository => {
     writeFileSync(path.join(repository, file), content);
   };
   const merged: { readonly branch: string; readonly head: string }[] = [];
+  const printed: string[] = [];
 
   return {
     branches: () =>
@@ -144,7 +151,9 @@ const open = (root: string): ScratchRepository => {
     files: (revision) => lines(jj("file", "list", "-r", revision)),
     git,
     jj,
-    layer: layerAt(repository, env),
+    layer: layerAt(repository, env, (text) => {
+      printed.push(text);
+    }),
     log: () =>
       lines(
         jj(
@@ -162,6 +171,7 @@ const open = (root: string): ScratchRepository => {
     mergedOnGitHub: (branch, head) => {
       merged.push({ branch, head });
     },
+    printed: () => printed.join(""),
     stack: (...names) => {
       jj("new", "main");
       for (const name of names) {
