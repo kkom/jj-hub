@@ -17,8 +17,9 @@ import {
   upstackRevset,
 } from "./stack/changes";
 import { type PublishFailed, republish } from "./stack/publish";
+import type { NotCombined } from "./stack/reconcile";
 import { checkedTrunk } from "./stack/trunk";
-import { type NotCombined, sync } from "./sync";
+import { sync } from "./sync";
 
 export class NotMergeable extends Data.TaggedError("NotMergeable")<{
   readonly message: string;
