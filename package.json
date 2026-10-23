@@ -1,6 +1,6 @@
 {
   "name": "jj-octo",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "A jj subcommand for GitHub that supports stacked pull requests and works in Claude Code cloud sessions",
   "license": "MIT",
   "repository": {
