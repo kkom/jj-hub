@@ -90,6 +90,15 @@ describe("sync", () => {
     expect(repository.jj("bookmark", "list", "--all-remotes", "a")).toBe("");
   });
 
+  // The fetch deletes the bookmark of a branch deleted on GitHub, so there's nothing left to forget.
+  it("abandons a merged change whose branch GitHub deleted, without a warning", async () => {
+    squashMergeOnGitHub(repository, "a");
+    await syncIn(repository);
+    expect(repository.log()).toEqual(["b [b]"]);
+    expect(repository.jj("bookmark", "list", "--all-remotes", "a")).toBe("");
+    expect(repository.printed()).not.toContain("Warning");
+  });
+
   // GitHub merges a stack as one commit, on a trunk that moved since the stack was pushed. Rebased
   // onto the trunk, `a` would conflict with `b`'s edit of the same file, rather than come out
   // empty. The branches are still on GitHub, so the fetch doesn't drop the changes either.
