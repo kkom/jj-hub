@@ -3,7 +3,7 @@ import { Console, Data, Effect, Match, Option } from "effect";
 import { Git, type GitFailed } from "../../../clients/git";
 import type { PullRequest } from "../../../clients/github/types";
 import { Jj, type JjFailed, jjFlag } from "../../../clients/jj";
-import { bookmarkRevset, lines, readLog, type StackChange } from "./changes";
+import { bookmarkRevset, lines, parseDescription, readLog, type StackChange } from "./changes";
 import { descriptionFrom, descriptionSyncFor, normalizedDescription } from "./plan";
 
 export class DescriptionConflict extends Data.TaggedError("DescriptionConflict")<{
@@ -42,23 +42,50 @@ export const descriptionsOf = (
             new Map(
               lines(output).map((line): [string, string] => {
                 const [commit = "", json = '""'] = line.split("\t");
-                const parsed: unknown = JSON.parse(json);
-                return [commit, typeof parsed === "string" ? parsed : ""];
+                return [commit, parseDescription(json)];
               }),
             ),
         ),
       );
 
 /**
+ * Each description the change has had, its current one included, read from its evolog. The evolog
+ * also holds commits squashed into the change, which belong to other changes, so only commits with
+ * the change's id count. That also leaves out what a change had before `jj split` gave it a new id.
+ */
+const ownDescriptions = (
+  bookmark: string,
+  changeId: string,
+): Effect.Effect<readonly string[], JjFailed, Jj> =>
+  Effect.gen(function* () {
+    const jj = yield* Jj;
+    const output = yield* jj.read([
+      "evolog",
+      "--no-graph",
+      "-r",
+      bookmarkRevset(bookmark),
+      "-T",
+      String.raw`commit.change_id() ++ "\t" ++ commit.description().escape_json() ++ "\n"`,
+    ]);
+    return lines(output).flatMap((line) => {
+      const [change = "", json = '""'] = line.split("\t");
+      return change === changeId ? [parseDescription(json)] : [];
+    });
+  });
+
+/**
  * Makes a change's description and its pull request's title and body the same text. An edit made
  * on GitHub alone is written into the change here. Any other difference returns the description
  * to send to GitHub once the bookmark is pushed.
  *
- * `pushedDescription` is the description of the commit last pushed, which both sides agreed on
- * then. A bookmark never pushed has none, and an empty text is merged from.
+ * Who changed the description is read against the text both sides last agreed on. That's the
+ * description of the commit last pushed, unless the pull request has a description the change had
+ * before. A push made without `submit`, such as `jj git push`, leaves the pull request with that
+ * earlier text, which nobody edited on GitHub. A bookmark never pushed has no pushed description,
+ * and an empty text is merged from.
  */
 export const syncDescription = (
-  { bookmark, description }: StackChange,
+  { bookmark, changeId, description }: StackChange,
   pullRequest: PullRequest,
   { ignoreClaudeCodeFooter, overwriteDescriptions, pushedDescription }: DescriptionOptions,
 ): Effect.Effect<Option.Option<string>, DescriptionConflict | GitFailed | JjFailed, Git | Jj> =>
@@ -72,6 +99,16 @@ export const syncDescription = (
       ignoreClaudeCodeFooter,
     });
     const pushed = normalizedDescription(pushedDescription, { ignoreClaudeCodeFooter });
+    // The evolog is read only where GitHub's text is neither side's current one.
+    const isOwnEarlier =
+      local !== onGitHub &&
+      onGitHub !== pushed &&
+      (yield* ownDescriptions(bookmark, changeId)).some(
+        (text) => normalizedDescription(text, { ignoreClaudeCodeFooter }) === onGitHub,
+      );
+    if (isOwnEarlier) {
+      return Option.some(local);
+    }
 
     return yield* Match.value(descriptionSyncFor({ local, onGitHub, pushed })).pipe(
       Match.tag("InSync", () => Effect.succeed(Option.none<string>())),

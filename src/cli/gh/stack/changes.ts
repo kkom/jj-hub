@@ -33,6 +33,12 @@ export const bookmarkRevset = (bookmark: string): string => `bookmarks(exact:"${
 export const lines = (output: string): readonly string[] =>
   output.split("\n").filter((line) => line !== "");
 
+/** A description that a template printed with `escape_json()`. */
+export const parseDescription = (json: string): string => {
+  const parsed: unknown = JSON.parse(json);
+  return typeof parsed === "string" ? parsed : "";
+};
+
 /** What `jj log` prints for the revset's commits with the template, bottom first. */
 export const readLog = (revset: string, template: string): Effect.Effect<string, JjFailed, Jj> =>
   Effect.gen(function* () {
@@ -143,8 +149,7 @@ const loggedChanges = (revset: string) =>
           bookmarks = "",
           json = '""',
         ] = line.split("\t");
-        const parsed: unknown = JSON.parse(json);
-        const description = typeof parsed === "string" ? parsed : "";
+        const description = parseDescription(json);
         return {
           bookmarks: bookmarks === "" ? [] : bookmarks.split(" "),
           changeId,
