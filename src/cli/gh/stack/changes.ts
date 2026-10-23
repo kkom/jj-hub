@@ -24,6 +24,9 @@ const downstackRevset = (revision: string): string =>
 export const upstackRevset = (revision: string): string =>
   `(${revision})+:: & (${stackRevset(revision)})`;
 
+/** The commits of any of the revsets. With none, no commits, where an empty union fails. */
+export const anyOf = (revsets: readonly string[]): string => ["none()", ...revsets].join(" | ");
+
 /** The change a bookmark is on. */
 export const bookmarkRevset = (bookmark: string): string => `bookmarks(exact:"${bookmark}")`;
 
