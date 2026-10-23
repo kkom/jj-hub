@@ -1,14 +1,18 @@
 import { Console, Effect } from "effect";
 
 import { Jj, type JjFailed } from "../../../clients/jj";
-import { bookmarkRevset, bookmarkTargets, commitsAt, lines, readLog } from "./changes";
+import { anyOf, bookmarkRevset, bookmarkTargets, commitsAt, lines, readLog } from "./changes";
 
 // Combines a local change with its branch on GitHub after a fetch, for `sync` and `submit`.
 
 /** Where a bookmark on a stack pointed before the fetch. */
 export interface BookmarkBeforeFetch {
+  /** The ids of the changes on top of it, which the fetch can move off the stack. */
+  readonly above: readonly string[];
   /** The change's id, which stays the same when the change is rewritten. */
   readonly change: string;
+  /** Whether it's the working copy, which the fetch can replace with a new one off the stack. */
+  readonly editing: boolean;
   readonly local: string;
   readonly name: string;
   /** The commit of its branch, for a bookmark that was pushed. */
@@ -23,17 +27,34 @@ export const bookmarksBeforeFetch = (
 ): Effect.Effect<readonly BookmarkBeforeFetch[], JjFailed, Jj> =>
   Effect.gen(function* () {
     const targets = [...(yield* bookmarkTargets)];
+    const bookmarked = `(${revset}) & bookmarks()`;
     const bottomFirst = lines(
       yield* readLog(
-        `(${revset}) & bookmarks()`,
-        String.raw`commit_id ++ "\t" ++ change_id ++ "\n"`,
+        bookmarked,
+        String.raw`commit_id ++ "\t" ++ change_id ++ "\t" ++ current_working_copy ++ "\n"`,
       ),
     );
+    const children = lines(
+      yield* readLog(
+        `children(${bookmarked})`,
+        String.raw`parents.map(|p| p.commit_id()).join(",") ++ "\t" ++ change_id ++ "\n"`,
+      ),
+    ).map((line) => line.split("\t"));
     return bottomFirst.toReversed().flatMap((line): readonly BookmarkBeforeFetch[] => {
-      const [commit = "", change = ""] = line.split("\t");
+      const [commit = "", change = "", workingCopy] = line.split("\t");
+      const above = children.flatMap(([parents = "", child = ""]) =>
+        parents.split(",").includes(commit) ? [child] : [],
+      );
       return targets
         .filter(([, { local }]) => local === commit)
-        .map(([name, { origin }]) => ({ change, local: commit, name, remote: origin }));
+        .map(([name, { origin }]) => ({
+          above,
+          change,
+          editing: workingCopy === "true",
+          local: commit,
+          name,
+          remote: origin,
+        }));
     });
   });
 
@@ -62,7 +83,7 @@ const localCommit = (change: string, remote: string, fetched: string) =>
  * leaves it conflicted where both sides changed.
  */
 export const combine = (
-  { change, local: localBefore, name, remote }: BookmarkBeforeFetch,
+  { above, change, editing, local: localBefore, name, remote }: BookmarkBeforeFetch,
   fetched: string | undefined,
 ): Effect.Effect<boolean, JjFailed, Jj> =>
   Effect.gen(function* () {
@@ -73,6 +94,18 @@ export const combine = (
     }
     const [local, ...others] = yield* localCommit(change, remote, fetched);
     if (local === undefined) {
+      // Nothing but the working copy kept the pushed commit, so the fetch abandoned it. It moved
+      // the changes on it to its parent, off the stack, and started a new working copy there if
+      // it was the working copy. GitHub's commit takes its place for both.
+      if (editing) {
+        yield* jj.run(["edit", fetched]);
+      }
+      // GitHub's own copies can carry the ids too, and are already on its commit.
+      const moved = `(${anyOf(above.map((child) => `change_id(${child})`))}) ~ children(${fetched})`;
+      if ((yield* commitsAt(moved)).length > 0) {
+        yield* jj.run(["rebase", "--source", moved, "--destination", fetched]);
+        yield* Console.error(`took GitHub's rewritten ${name}, and moved what was on it there`);
+      }
       return true;
     }
     if (others.length > 0) {
@@ -104,6 +137,10 @@ export const combine = (
     // From here GitHub rewrote the branch: its commit doesn't contain the one pushed.
     if (localBefore === remote) {
       yield* jj.run(["rebase", "--source", `children(${local})`, "--destination", fetched]);
+      // Abandoning the working copy would start a new one on the parent, off the stack.
+      if (editing) {
+        yield* jj.run(["edit", fetched]);
+      }
       yield* jj.run(["abandon", local]);
       yield* Console.error(`took GitHub's rewritten ${name}, which wasn't changed locally`);
       return true;
