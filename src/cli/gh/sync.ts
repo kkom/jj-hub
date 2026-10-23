@@ -6,7 +6,13 @@ import { GitHubFromOrigin } from "../../clients/github/origin";
 import type { Jj, JjFailed } from "../../clients/jj";
 import { asUserError, withHelp } from "../command";
 import { bookmarksBeforeFetch } from "./stack/combine";
-import { type MergedChange, mergedOnGitHub, type NotCombined, reconcile } from "./stack/reconcile";
+import {
+  type MergedChange,
+  mergedOnGitHub,
+  type NotCombined,
+  notMerged,
+  reconcile,
+} from "./stack/reconcile";
 import { checkedTrunk } from "./stack/trunk";
 
 /**
@@ -21,11 +27,9 @@ export const sync = (
     const before = yield* bookmarksBeforeFetch("mutable()");
     const merged = [
       ...known,
-      ...(yield* mergedOnGitHub(
-        before.filter(({ name }) => known.every(({ bookmark }) => bookmark !== name)),
-      )),
+      ...(yield* mergedOnGitHub(before.filter(({ name }) => notMerged(known)(name)))),
     ];
-    yield* reconcile({ before, merged });
+    yield* reconcile({ before, merged, scope: "every stack" });
   });
 
 export const syncCommand = Command.make("sync", {}, () =>

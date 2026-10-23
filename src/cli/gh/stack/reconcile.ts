@@ -4,6 +4,7 @@ import { GitHub, type GitHubFailed } from "../../../clients/github/client";
 import { Jj, type JjFailed } from "../../../clients/jj";
 import {
   anyOf,
+  bookmarkRevset,
   bookmarksAt,
   bookmarkTargets,
   changeIdsAt,
@@ -14,7 +15,7 @@ import {
   type StackChange,
   stackRevset,
 } from "./changes";
-import { type BookmarkBeforeFetch, combine } from "./combine";
+import { type BookmarkBeforeFetch, combine, pushedOf } from "./combine";
 
 // A stack already on the trunk has nothing to rebase.
 const BEHIND_ROOTS = `(${STACK_ROOTS}) ~ children(trunk())`;
@@ -65,6 +66,46 @@ const rebaseStack = (root: string, required: readonly string[]) =>
 /** A change whose pull request merged, with the bookmark that names its branch. */
 export type MergedChange = Pick<StackChange, "bookmark" | "changeId">;
 
+/** Whether the bookmark's change is none of the merged ones. */
+export const notMerged =
+  (merged: readonly MergedChange[]) =>
+  (name: string): boolean =>
+    merged.every(({ bookmark }) => bookmark !== name);
+
+/** The head commit of each merged pull request from each pushed bookmark's branch. */
+export const mergedHeadsOf = (
+  bookmarks: readonly BookmarkBeforeFetch[],
+): Effect.Effect<Readonly<Record<string, readonly string[]>>, GitHubFailed, GitHub> =>
+  Effect.gen(function* () {
+    const github = yield* GitHub;
+    const pushed = pushedOf(bookmarks);
+    const heads = yield* Effect.forEach(pushed, ({ name }) => github.mergedHeads(name), {
+      concurrency: "unbounded",
+    });
+    return Object.fromEntries(pushed.map(({ name }, index) => [name, heads[index] ?? []]));
+  });
+
+/** `mergedOnGitHub`, from merged heads already read. */
+export const mergedIn = (
+  bookmarks: readonly BookmarkBeforeFetch[],
+  heads: Readonly<Record<string, readonly string[]>>,
+): Effect.Effect<readonly MergedChange[], JjFailed, Jj> =>
+  Effect.gen(function* () {
+    const jj = yield* Jj;
+    const merged = yield* Effect.forEach(bookmarks, ({ change, local, name, remote }) =>
+      Effect.gen(function* () {
+        const merges = heads[name] ?? [];
+        const rebasedOnly =
+          remote !== undefined &&
+          merges.includes(remote) &&
+          (yield* jj.read(["interdiff", "--from", remote, "--to", local, "--summary"])).trim() ===
+            "";
+        return merges.includes(local) || rebasedOnly ? [{ bookmark: name, changeId: change }] : [];
+      }),
+    );
+    return merged.flat();
+  });
+
 /**
  * The changes whose pull requests GitHub reports as merged. A change counts where GitHub merged
  * it as it is, or merged the commit pushed for it, which it differs from only by a rebase, as
@@ -74,25 +115,7 @@ export type MergedChange = Pick<StackChange, "bookmark" | "changeId">;
 export const mergedOnGitHub = (
   bookmarks: readonly BookmarkBeforeFetch[],
 ): Effect.Effect<readonly MergedChange[], GitHubFailed | JjFailed, GitHub | Jj> =>
-  Effect.gen(function* () {
-    const github = yield* GitHub;
-    const jj = yield* Jj;
-    const merged = yield* Effect.forEach(
-      bookmarks.filter(({ remote }) => remote !== undefined),
-      ({ change, local, name, remote }) =>
-        Effect.gen(function* () {
-          const heads = yield* github.mergedHeads(name);
-          const rebasedOnly =
-            remote !== undefined &&
-            heads.includes(remote) &&
-            (yield* jj.read(["interdiff", "--from", remote, "--to", local, "--summary"])).trim() ===
-              "";
-          return heads.includes(local) || rebasedOnly ? [{ bookmark: name, changeId: change }] : [];
-        }),
-      { concurrency: "unbounded" },
-    );
-    return merged.flat();
-  });
+  Effect.flatMap(mergedHeadsOf(bookmarks), (heads) => mergedIn(bookmarks, heads));
 
 /** Forgets the bookmarks and their branches on GitHub, in one jj operation. */
 const forget = (names: readonly string[]) =>
@@ -112,6 +135,18 @@ interface Reconciliation {
   /** The bookmarks to combine with their branches, as they were before the fetch. */
   readonly before: readonly BookmarkBeforeFetch[];
   readonly merged: readonly MergedChange[];
+  /**
+   * Every stack, or one stack: the trunk to fetch for it, its bookmarks, and the ids of its
+   * changes without one. Those find the stack after the sync, since a bookmark follows a change
+   * replaced with GitHub's, and a change keeps its id.
+   */
+  readonly scope:
+    | "every stack"
+    | {
+        readonly bookmarks: readonly string[];
+        readonly trunk: string;
+        readonly unnamed: readonly string[];
+      };
 }
 
 /**
@@ -132,10 +167,18 @@ interface Reconciliation {
 export const reconcile = ({
   before,
   merged,
+  scope,
 }: Reconciliation): Effect.Effect<void, JjFailed | NotCombined, Jj> =>
   Effect.gen(function* () {
     const jj = yield* Jj;
-    yield* jj.run(["git", "fetch"]);
+    const branches =
+      scope === "every stack"
+        ? []
+        : [scope.trunk, ...pushedOf(before).map(({ name }) => name)].flatMap((branch) => [
+            "--branch",
+            `exact:${branch}`,
+          ]);
+    yield* jj.run(["git", "fetch", ...branches]);
     // After the fetch, so it can't bring a branch GitHub hasn't deleted yet back as a bookmark.
     yield* forget(merged.map(({ bookmark }) => bookmark));
     const mergedRevset = `(${anyOf(merged.map(({ changeId }) => `change_id(${changeId})`))}) & mutable()`;
@@ -148,21 +191,25 @@ export const reconcile = ({
     }
     const fetched = yield* bookmarkTargets;
     const notCombined: string[] = [];
-    for (const bookmark of before.filter(({ name }) =>
-      merged.every((change) => change.bookmark !== name),
-    )) {
+    for (const bookmark of before.filter(({ name }) => notMerged(merged)(name))) {
       if (!(yield* combine(bookmark, fetched.get(bookmark.name)?.origin))) {
         notCombined.push(bookmark.name);
       }
     }
-    for (const root of yield* commitsAt(BEHIND_ROOTS)) {
+    const roots =
+      scope === "every stack"
+        ? BEHIND_ROOTS
+        : `(${BEHIND_ROOTS}) & ::(${anyOf([
+            ...scope.bookmarks.map((name) => bookmarkRevset(name)),
+            ...scope.unnamed.map((change) => `change_id(${change})`),
+          ])})`;
+    for (const root of yield* commitsAt(roots)) {
       yield* rebaseStack(root, required);
     }
-    yield* forget(
-      (yield* bookmarksAt("::trunk()")).filter((name) =>
-        before.some((bookmark) => bookmark.name === name),
-      ),
+    const onStacks = new Set(
+      scope === "every stack" ? before.map(({ name }) => name) : scope.bookmarks,
     );
+    yield* forget((yield* bookmarksAt("::trunk()")).filter((name) => onStacks.has(name)));
     if (notCombined.length > 0) {
       yield* new NotCombined({
         message: [

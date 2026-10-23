@@ -19,6 +19,11 @@ export interface BookmarkBeforeFetch {
   readonly remote: string | undefined;
 }
 
+/** The bookmarks that were pushed, and so have a branch on GitHub. */
+export const pushedOf = (
+  bookmarks: readonly BookmarkBeforeFetch[],
+): readonly BookmarkBeforeFetch[] => bookmarks.filter(({ remote }) => remote !== undefined);
+
 // Top first, because folding GitHub's commits into a change rewrites everything above it. Done
 // bottom first, a commit GitHub added higher up would be rewritten too, and left behind as a
 // change of its own.

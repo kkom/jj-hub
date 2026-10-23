@@ -17,7 +17,7 @@ export const stackRevset = (revision: string): string =>
   `(reachable(${revision}, mutable()) & (${STACK_ROOTS})::) ~ ${SCRATCH}`;
 
 // For an empty working copy, which the stack leaves out, this starts at the change below it.
-const downstackRevset = (revision: string): string =>
+export const downstackRevset = (revision: string): string =>
   `::(${revision}) & (${stackRevset(revision)})`;
 
 /** The changes of the revision's stack that are above it. */

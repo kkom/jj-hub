@@ -66,9 +66,9 @@ export const rewriteElsewhere = (
 };
 
 /**
- * Squash-merges a branch into `main` as one commit, together with the branches `below` it, as
- * GitHub's stack merge does. Records each one's pull request as merged, and with `deleted` also
- * deletes the branches. Rebases the branches `above` it onto the new `main` in order, as GitHub
+ * Squash-merges a branch into `into`, `main` by default, as one commit, together with the
+ * branches `below` it, as GitHub's stack merge does. Records each one's pull request as merged, and with `deleted` also
+ * deletes the branches. Rebases the branches `above` it onto the new `into` in order, as GitHub
  * does for the rest of a stack.
  */
 export const squashMergeOnGitHub = (
@@ -78,22 +78,24 @@ export const squashMergeOnGitHub = (
     above = [],
     below = [],
     deleted = true,
+    into = "main",
   }: {
     readonly above?: readonly string[];
     readonly below?: readonly string[];
     readonly deleted?: boolean;
+    readonly into?: string;
   } = {},
 ): void => {
   repository.git("fetch", "--quiet");
-  repository.git("checkout", "--quiet", "-B", "main", "origin/main");
+  repository.git("checkout", "--quiet", "-B", into, `origin/${into}`);
   repository.git("merge", "--quiet", "--squash", `origin/${branch}`);
   repository.git("commit", "--quiet", "-m", `${branch} (#1)`);
-  repository.git("push", "--quiet", "origin", "main");
+  repository.git("push", "--quiet", "origin", into);
   for (const name of [...below, branch]) {
     repository.mergedOnGitHub(name, repository.git("rev-parse", `origin/${name}`).trim());
   }
   let previous = repository.git("rev-parse", `origin/${branch}`).trim();
-  let base = "main";
+  let base = into;
   for (const name of above) {
     const pushed = repository.git("rev-parse", `origin/${name}`).trim();
     repository.git("checkout", "--quiet", "-B", name, pushed);
