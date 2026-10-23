@@ -1,5 +1,6 @@
 import { Data, Effect } from "effect";
 
+import { GitHub, type GitHubFailed } from "../../../clients/github/client";
 import type { Jj, JjFailed } from "../../../clients/jj";
 import { commitsAt } from "./changes";
 
@@ -23,3 +24,14 @@ export const checkTrunk = (branch: string): Effect.Effect<void, JjFailed | Trunk
       });
     }
   });
+
+/** GitHub's default branch, read once and checked to be `trunk()`. */
+export const checkedTrunk: Effect.Effect<
+  string,
+  GitHubFailed | JjFailed | TrunkMismatch,
+  GitHub | Jj
+> = Effect.gen(function* () {
+  const branch = yield* (yield* GitHub).defaultBranch;
+  yield* checkTrunk(branch);
+  return branch;
+});

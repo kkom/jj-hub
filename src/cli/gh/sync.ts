@@ -18,7 +18,7 @@ import {
   type StackChange,
   stackRevset,
 } from "./stack/changes";
-import { checkTrunk } from "./stack/trunk";
+import { checkedTrunk } from "./stack/trunk";
 
 // A stack already on the trunk has nothing to rebase.
 const BEHIND_ROOTS = `(${STACK_ROOTS}) ~ children(trunk())`;
@@ -271,7 +271,7 @@ export const sync = (
 export const syncCommand = Command.make("sync", {}, () =>
   asUserError(
     Effect.gen(function* () {
-      yield* checkTrunk(yield* (yield* GitHub).defaultBranch);
+      yield* checkedTrunk;
       yield* sync();
     }).pipe(Effect.provide(GitHubFromOrigin)),
   ),
