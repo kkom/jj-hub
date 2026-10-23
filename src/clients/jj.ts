@@ -25,11 +25,11 @@ interface JjOptions {
   readonly cwd?: string;
   /** Added to the environment jj inherits. */
   readonly env?: Readonly<Record<string, string>>;
-  /** Discards what `run` commands print, which otherwise goes to the terminal. */
-  readonly quiet?: boolean;
+  /** Receives what `run` commands print, which otherwise goes to the terminal. */
+  readonly printed?: (text: string) => void;
 }
 
-export const jjLayer = ({ cwd, env, quiet = false }: JjOptions = {}): Layer.Layer<
+export const jjLayer = ({ cwd, env, printed }: JjOptions = {}): Layer.Layer<
   Jj,
   never,
   ChildProcessSpawner.ChildProcessSpawner
@@ -39,13 +39,13 @@ export const jjLayer = ({ cwd, env, quiet = false }: JjOptions = {}): Layer.Laye
     Effect.gen(function* () {
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
       const location = { cwd, env, extendEnv: true };
-      const output = quiet ? "ignore" : "inherit";
 
-      const read = (args: readonly string[]): Effect.Effect<string, JjFailed> =>
+      // What jj printed to stdout and to stderr, and its exit code.
+      const captured = (args: readonly string[]) =>
         Effect.scoped(
           Effect.gen(function* () {
             const handle = yield* spawner.spawn(ChildProcess.make("jj", args, location));
-            const [stdout, stderr, code] = yield* Effect.all(
+            return yield* Effect.all(
               [
                 Stream.mkString(Stream.decodeText(handle.stdout)),
                 Stream.mkString(Stream.decodeText(handle.stderr)),
@@ -53,19 +53,38 @@ export const jjLayer = ({ cwd, env, quiet = false }: JjOptions = {}): Layer.Laye
               ],
               { concurrency: "unbounded" },
             );
-            return code === 0 ? stdout : yield* failed(args, stderr);
           }),
         ).pipe(
           Effect.catchTag("PlatformError", (error) => Effect.fail(failed(args, error.message))),
         );
 
+      const read = (args: readonly string[]): Effect.Effect<string, JjFailed> =>
+        Effect.flatMap(captured(args), ([stdout, stderr, code]) =>
+          code === 0 ? Effect.succeed(stdout) : Effect.fail(failed(args, stderr)),
+        );
+
       const run = (args: readonly string[]): Effect.Effect<void, JjFailed> =>
-        spawner
-          .exitCode(ChildProcess.make("jj", args, { ...location, stderr: output, stdout: output }))
-          .pipe(
-            Effect.catchTag("PlatformError", (error) => Effect.fail(failed(args, error.message))),
-            Effect.flatMap((code) => (code === 0 ? Effect.void : Effect.fail(failed(args, "")))),
-          );
+        printed === undefined
+          ? spawner
+              .exitCode(
+                ChildProcess.make("jj", args, {
+                  ...location,
+                  stderr: "inherit",
+                  stdout: "inherit",
+                }),
+              )
+              .pipe(
+                Effect.catchTag("PlatformError", (error) =>
+                  Effect.fail(failed(args, error.message)),
+                ),
+                Effect.flatMap((code) =>
+                  code === 0 ? Effect.void : Effect.fail(failed(args, "")),
+                ),
+              )
+          : Effect.flatMap(captured(args), ([stdout, stderr, code]) => {
+              printed(stdout + stderr);
+              return code === 0 ? Effect.void : Effect.fail(failed(args, stderr));
+            });
 
       return { read, run };
     }),

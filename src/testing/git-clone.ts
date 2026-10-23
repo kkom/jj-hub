@@ -40,12 +40,16 @@ export const gitClone = (
   execute(root, ["git", "clone", "--quiet", origin, checkout]);
   execute(checkout, ["git", "config", "user.name", name]);
   execute(checkout, ["git", "config", "user.email", "cloner@example.com"]);
+  const printed: string[] = [];
+  const print = (text: string): void => {
+    printed.push(text);
+  };
   return {
     git: (...args) => execute(checkout, ["git", ...args]),
     jj: (...args) => execute(checkout, ["jj", ...args]),
     jjConfigFile,
-    layer: layerAt(checkout, env),
-    layerAt: (directory) => layerAt(directory, env),
+    layer: layerAt(checkout, env, print),
+    layerAt: (directory) => layerAt(directory, env, print),
   };
 };
 
