@@ -1,9 +1,9 @@
 import { afterAll, describe, expect, it } from "bun:test";
 
-import { Effect, Layer, Option } from "effect";
+import { Effect, Option } from "effect";
 
 import { moveTrunkOnGitHub, squashMergeOnGitHub } from "../../testing/branch-changes";
-import { fakeGitHub, openPullRequest, stackOf } from "../../testing/fake-github";
+import { fakeGitHub, inRepository, openPullRequest, stackOf } from "../../testing/fake-github";
 import {
   pushedStack,
   removeScratchRepositories,
@@ -25,7 +25,7 @@ const mergeIn = (
   repository: ScratchRepository,
   github: ReturnType<typeof fakeGitHub>,
   revision: string,
-) => merge(revision).pipe(Effect.provide(Layer.merge(repository.layer, github.layer)));
+) => merge(revision).pipe(inRepository(repository, github));
 
 describe("merge", () => {
   it("merges a stacked pull request through its stack, then syncs and republishes the rest", async () => {
