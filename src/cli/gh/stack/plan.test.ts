@@ -5,6 +5,7 @@ import { Option } from "effect";
 import { PullRequestNumberSchema, StackNumberSchema } from "../../../clients/github/types";
 import { pullRequests, stackOf } from "../../../testing/fake-github";
 import {
+  agreedDescription,
   basesFor,
   descriptionSyncFor,
   mustDissolve,
@@ -165,13 +166,43 @@ describe("normalizedDescription", () => {
   });
 });
 
+describe("agreedDescription", () => {
+  const cases = [
+    {
+      expected: "record",
+      input: { isOwnEarlier: false, onGitHub: "pushed", recorded: Option.some("record") },
+      name: "the record, over the pushed description that GitHub has",
+    },
+    {
+      expected: "record",
+      input: { isOwnEarlier: true, onGitHub: "github", recorded: Option.some("record") },
+      name: "the record",
+    },
+    {
+      expected: "github",
+      input: { isOwnEarlier: true, onGitHub: "github", recorded: Option.none() },
+      name: "GitHub's description, which the change had before",
+    },
+    {
+      expected: "pushed",
+      input: { isOwnEarlier: false, onGitHub: "github", recorded: Option.none() },
+      name: "the pushed description",
+    },
+  ] as const;
+  for (const { expected, input, name } of cases) {
+    it(`is ${name}`, () => {
+      expect(agreedDescription({ ...input, pushed: "pushed" })).toBe(expected);
+    });
+  }
+});
+
 describe("descriptionSyncFor", () => {
   it.each([
     ["InSync", "new", "new"],
     ["TakeGitHub", "old", "new"],
     ["SendLocal", "new", "old"],
     ["Merge", "mine", "theirs"],
-  ] as const)("is %s for local %p and GitHub %p, pushed as old", (tag, local, onGitHub) => {
-    expect(descriptionSyncFor({ local, onGitHub, pushed: "old" })).toStrictEqual({ _tag: tag });
+  ] as const)("is %s for local %p and GitHub %p, agreed as old", (tag, local, onGitHub) => {
+    expect(descriptionSyncFor({ agreed: "old", local, onGitHub })).toStrictEqual({ _tag: tag });
   });
 });

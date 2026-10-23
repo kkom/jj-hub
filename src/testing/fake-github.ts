@@ -10,6 +10,7 @@ import {
   StackNumberSchema,
 } from "../clients/github/types";
 import type { Jj } from "../clients/jj";
+import type { PrDescriptions } from "../clients/pr-descriptions";
 import type { ScratchRepository } from "./scratch-repository";
 
 interface FakeGitHubOptions {
@@ -100,5 +101,5 @@ export const openPullRequest = (base: string, number: number, title: string): Pu
 /** Runs a program against the scratch repository and the fake GitHub. */
 export const inRepository =
   (repository: ScratchRepository, github: { readonly layer: Layer.Layer<GitHub> }) =>
-  <A, E>(program: Effect.Effect<A, E, Git | GitHub | Jj>): Effect.Effect<A, E> =>
+  <A, E>(program: Effect.Effect<A, E, Git | GitHub | Jj | PrDescriptions>): Effect.Effect<A, E> =>
     program.pipe(Effect.provide(Layer.merge(repository.layer, github.layer)));

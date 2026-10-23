@@ -2,38 +2,11 @@ import { afterAll, describe, expect, it } from "bun:test";
 
 import { Effect, Option } from "effect";
 
-import { fakeGitHub, inRepository, openPullRequest, stackOf } from "../../../testing/fake-github";
-import {
-  pushedStack,
-  removeScratchRepositories,
-  type ScratchRepository,
-  scratchRepository,
-} from "../../../testing/scratch-repository";
-import { submit } from "./publish";
+import { fakeGitHub, openPullRequest, stackOf } from "../../../testing/fake-github";
+import { removeScratchRepositories, scratchRepository } from "../../../testing/scratch-repository";
+import { description, githubWith, pushed, submitIn } from "../../../testing/submit";
 
 afterAll(removeScratchRepositories);
-
-const submitIn = (
-  repository: ScratchRepository,
-  github: ReturnType<typeof fakeGitHub>,
-  { draft = true, overwriteDescriptions = false, revision = "@" } = {},
-) => submit(revision, { draft, overwriteDescriptions }).pipe(inRepository(repository, github));
-
-const description = (repository: ScratchRepository, revision: string): string =>
-  repository.jj("log", "--no-graph", "-r", revision, "-T", "description").trimEnd();
-
-// A stack of `a` and `b`, pushed with `a` described as three paragraphs.
-const pushed = (): ScratchRepository => {
-  const repository = pushedStack("a", "b");
-  repository.jj("describe", "-r", "a", "-m", "a\n\nfirst\n\nsecond");
-  repository.jj("git", "push", "--bookmark", "a", "--bookmark", "b");
-  return repository;
-};
-const githubWith = (title: string, body: string) =>
-  fakeGitHub(
-    { a: { ...openPullRequest("main", 1, title), body }, b: openPullRequest("a", 2, "b") },
-    stackOf(1, 2),
-  );
 
 describe("submit", () => {
   it("pushes the bookmarks, opens the missing pull requests and registers a new stack", async () => {

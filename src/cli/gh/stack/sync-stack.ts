@@ -3,6 +3,7 @@ import { Console, Data, Effect } from "effect";
 import { Git, type GitFailed } from "../../../clients/git";
 import type { GitHub, GitHubFailed } from "../../../clients/github/client";
 import { Jj, type JjFailed } from "../../../clients/jj";
+import type { PrDescriptions } from "../../../clients/pr-descriptions";
 import { bookmarksAt, changeIdsAt, downstackRevset, lines, stackRevset } from "./changes";
 import { type BookmarkBeforeFetch, bookmarksBeforeFetch, pushedOf } from "./combine";
 import { mergedHeadsOf, mergedIn, type NotCombined, notMerged, reconcile } from "./reconcile";
@@ -72,7 +73,7 @@ export const syncStack = (
 ): Effect.Effect<
   boolean,
   BranchesDeleted | GitFailed | GitHubFailed | JjFailed | NotCombined,
-  Git | GitHub | Jj
+  Git | GitHub | Jj | PrDescriptions
 > =>
   Effect.gen(function* () {
     // The changes above the revision aren't submitted, so they're synced only by following these.

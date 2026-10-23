@@ -2,6 +2,7 @@ import { Console, Data, Effect } from "effect";
 
 import { GitHub, type GitHubFailed } from "../../../clients/github/client";
 import { Jj, type JjFailed } from "../../../clients/jj";
+import { PrDescriptions } from "../../../clients/pr-descriptions";
 import {
   anyOf,
   bookmarkRevset,
@@ -169,12 +170,14 @@ interface Reconciliation {
  * A change that reaches the trunk some other way is empty after the rebase, and `--skip-emptied`
  * abandons it. Its bookmark then stays behind on the trunk, so every bookmark that was on a stack
  * and is now on the trunk is forgotten too, remote side included.
+ *
+ * Last, it deletes the recorded pull request descriptions of bookmarks that are gone.
  */
 export const reconcile = ({
   before,
   merged,
   scope,
-}: Reconciliation): Effect.Effect<void, JjFailed | NotCombined, Jj> =>
+}: Reconciliation): Effect.Effect<void, JjFailed | NotCombined, Jj | PrDescriptions> =>
   Effect.gen(function* () {
     const jj = yield* Jj;
     const branches =
@@ -216,6 +219,9 @@ export const reconcile = ({
       scope === "every stack" ? before.map(({ name }) => name) : scope.bookmarks,
     );
     yield* forget((yield* bookmarksAt("::trunk()")).filter((name) => onStacks.has(name)));
+    const records = yield* PrDescriptions;
+    // `bookmarksAt` lists conflicted bookmarks too, which `bookmarkTargets` gives no local target.
+    yield* records.prune(Effect.provideService(bookmarksAt("all()"), Jj, jj));
     if (notCombined.length > 0) {
       yield* new NotCombined({
         message: [

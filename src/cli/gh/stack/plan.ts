@@ -110,23 +110,36 @@ export type DescriptionSync =
   | { readonly _tag: "TakeGitHub" };
 
 /**
- * Which way a description goes, from who changed it since the last push. `pushed` is the
- * description of the commit last pushed to the branch, which both sides agreed on then.
+ * The description both sides last agreed on: the record, and without one the pull request's own
+ * description where the change had it before, as after `jj git push`, else the pushed one.
  */
-export const descriptionSyncFor = ({
-  local,
+export const agreedDescription = ({
+  isOwnEarlier,
   onGitHub,
   pushed,
+  recorded,
 }: {
-  readonly local: string;
+  readonly isOwnEarlier: boolean;
   readonly onGitHub: string;
   readonly pushed: string;
+  readonly recorded: Option.Option<string>;
+}): string => Option.getOrElse(recorded, () => (isOwnEarlier ? onGitHub : pushed));
+
+/** Which way a description goes, from who changed it since both sides last agreed on `agreed`. */
+export const descriptionSyncFor = ({
+  agreed,
+  local,
+  onGitHub,
+}: {
+  readonly agreed: string;
+  readonly local: string;
+  readonly onGitHub: string;
 }): DescriptionSync => {
   if (local === onGitHub) {
     return { _tag: "InSync" };
   }
-  if (local === pushed) {
+  if (local === agreed) {
     return { _tag: "TakeGitHub" };
   }
-  return onGitHub === pushed ? { _tag: "SendLocal" } : { _tag: "Merge" };
+  return onGitHub === agreed ? { _tag: "SendLocal" } : { _tag: "Merge" };
 };

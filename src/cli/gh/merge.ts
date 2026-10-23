@@ -6,6 +6,7 @@ import { GitHub } from "../../clients/github/client";
 import { GitHubFromOrigin } from "../../clients/github/origin";
 import type { PullRequest, PullRequestNumber } from "../../clients/github/types";
 import type { Jj } from "../../clients/jj";
+import type { PrDescriptions } from "../../clients/pr-descriptions";
 import { asUserError, revisionFlag, withHelp } from "../command";
 import {
   bookmarkRevset,
@@ -70,7 +71,11 @@ const mergeOnGitHub = ({ base, number }: PullRequest, trunk: string) =>
  */
 export const merge = (
   revision: string,
-): Effect.Effect<void, NotCombined | NotMergeable | PublishFailed, Git | GitHub | Jj> =>
+): Effect.Effect<
+  void,
+  NotCombined | NotMergeable | PublishFailed,
+  Git | GitHub | Jj | PrDescriptions
+> =>
   Effect.gen(function* () {
     const trunk = yield* checkedTrunk;
     const changes = yield* downstackChanges(revision);

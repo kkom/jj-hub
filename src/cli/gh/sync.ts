@@ -4,6 +4,7 @@ import { Command } from "effect/cli";
 import type { GitHub, GitHubFailed } from "../../clients/github/client";
 import { GitHubFromOrigin } from "../../clients/github/origin";
 import type { Jj, JjFailed } from "../../clients/jj";
+import type { PrDescriptions } from "../../clients/pr-descriptions";
 import { asUserError, withHelp } from "../command";
 import { bookmarksBeforeFetch } from "./stack/combine";
 import {
@@ -22,7 +23,7 @@ import { checkedTrunk } from "./stack/trunk";
 export const sync = (
   // Changes known to have merged, which GitHub isn't asked about.
   known: readonly MergedChange[] = [],
-): Effect.Effect<void, GitHubFailed | JjFailed | NotCombined, GitHub | Jj> =>
+): Effect.Effect<void, GitHubFailed | JjFailed | NotCombined, GitHub | Jj | PrDescriptions> =>
   Effect.gen(function* () {
     const before = yield* bookmarksBeforeFetch("mutable()");
     const merged = [

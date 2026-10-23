@@ -1,6 +1,6 @@
 #!/usr/bin/env -S bun --no-env-file --config=/dev/null
 import { BunRuntime, BunServices } from "@effect/platform-bun";
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
 import { CliConfig, Command, GlobalFlag } from "effect/cli";
 import { FetchHttpClient } from "effect/http";
 
@@ -8,10 +8,11 @@ import manifest from "../package.json" with { type: "json" };
 import { jjGhCommand } from "./cli/gh/command";
 import { GitLive } from "./clients/git";
 import { JjLive } from "./clients/jj";
+import { prDescriptionsLayer } from "./clients/pr-descriptions";
 
 BunRuntime.runMain(
   Command.run(jjGhCommand, { version: manifest.version }).pipe(
-    Effect.provide([GitLive, JjLive]),
+    Effect.provide([GitLive, Layer.provideMerge(prDescriptionsLayer, JjLive)]),
     // The completions flag is left out. Its script completes a command of this name, but the shell
     // gives everything after `jj` to jj's own completions.
     Effect.provide(

@@ -11,11 +11,12 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { BunServices } from "@effect/platform-bun";
-import { Layer } from "effect";
+import { Effect, Layer } from "effect";
 
 import { lines } from "../cli/gh/stack/changes";
 import { type Git, gitLayer } from "../clients/git";
 import { type Jj, jjLayer } from "../clients/jj";
+import { PrDescriptions, prDescriptionsLayer } from "../clients/pr-descriptions";
 
 /**
  * A jj repository with `main` pushed to a bare `origin`, for tests that run the real jj. A second,
@@ -35,7 +36,13 @@ export interface ScratchRepository {
   readonly git: (...args: readonly string[]) => string;
   /** Runs jj in the repository, and returns what it printed. */
   readonly jj: (...args: readonly string[]) => string;
-  readonly layer: Layer.Layer<Git | Jj>;
+  readonly layer: Layer.Layer<Git | Jj | PrDescriptions>;
+  /** Runs the effect with the repository's recorded pull request descriptions. */
+  readonly records: <A>(
+    effect: (store: PrDescriptions["Service"]) => Effect.Effect<A>,
+  ) => Promise<A>;
+  /** The same clients in another directory, such as a workspace added to the repository. */
+  readonly layerAt: (directory: string) => Layer.Layer<Git | Jj | PrDescriptions>;
   /** Each described change above the trunk, bottom to top, as `description [bookmarks]`. */
   readonly log: () => readonly string[];
   /** The head commit of each pull request from the branch that `mergedOnGitHub` recorded. */
@@ -103,10 +110,11 @@ export const layerAt = (
   cwd: string,
   env: Readonly<Record<string, string>>,
   printed: (text: string) => void,
-): Layer.Layer<Git | Jj> =>
-  Layer.merge(gitLayer({ cwd, env }), jjLayer({ cwd, env, printed })).pipe(
-    Layer.provide(BunServices.layer),
-  );
+): Layer.Layer<Git | Jj | PrDescriptions> =>
+  Layer.merge(
+    gitLayer({ cwd, env }),
+    Layer.provideMerge(prDescriptionsLayer, jjLayer({ cwd, env, printed })),
+  ).pipe(Layer.provide(BunServices.layer));
 
 // The repository in a directory that already holds one: `origin.git`, `repository`, `github`
 // and the jj configuration.
@@ -138,6 +146,11 @@ const open = (root: string): ScratchRepository => {
   };
   const merged: { readonly branch: string; readonly head: string }[] = [];
   const printed: string[] = [];
+  const layerIn = (directory: string) =>
+    layerAt(directory, env, (text) => {
+      printed.push(text);
+    });
+  const layer = layerIn(repository);
 
   return {
     branches: () =>
@@ -151,9 +164,8 @@ const open = (root: string): ScratchRepository => {
     files: (revision) => lines(jj("file", "list", "-r", revision)),
     git,
     jj,
-    layer: layerAt(repository, env, (text) => {
-      printed.push(text);
-    }),
+    layer,
+    layerAt: layerIn,
     log: () =>
       lines(
         jj(
@@ -172,6 +184,8 @@ const open = (root: string): ScratchRepository => {
       merged.push({ branch, head });
     },
     printed: () => printed.join(""),
+    records: (effect) =>
+      Effect.runPromise(Effect.flatMap(PrDescriptions, effect).pipe(Effect.provide(layer))),
     stack: (...names) => {
       jj("new", "main");
       for (const name of names) {
