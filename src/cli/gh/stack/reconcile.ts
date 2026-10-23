@@ -66,25 +66,29 @@ const rebaseStack = (root: string, required: readonly string[]) =>
 export type MergedChange = Pick<StackChange, "bookmark" | "changeId">;
 
 /**
- * The changes whose pull requests GitHub reports as merged. Only a change that is still the
- * commit GitHub merged counts, so a change edited since keeps its edits, and a pull request from
- * an earlier branch of the same name doesn't count.
+ * The changes whose pull requests GitHub reports as merged. A change counts where GitHub merged
+ * it as it is, or merged the commit pushed for it, which it differs from only by a rebase, as
+ * after a sync. So a change edited since keeps its edits, and a pull request from an earlier
+ * branch of the same name doesn't count.
  */
 export const mergedOnGitHub = (
   bookmarks: readonly BookmarkBeforeFetch[],
-): Effect.Effect<readonly MergedChange[], GitHubFailed, GitHub> =>
+): Effect.Effect<readonly MergedChange[], GitHubFailed | JjFailed, GitHub | Jj> =>
   Effect.gen(function* () {
     const github = yield* GitHub;
+    const jj = yield* Jj;
     const merged = yield* Effect.forEach(
       bookmarks.filter(({ remote }) => remote !== undefined),
-      ({ change, local, name }) =>
-        github
-          .mergedHeads(name)
-          .pipe(
-            Effect.map((heads): readonly MergedChange[] =>
-              heads.includes(local) ? [{ bookmark: name, changeId: change }] : [],
-            ),
-          ),
+      ({ change, local, name, remote }) =>
+        Effect.gen(function* () {
+          const heads = yield* github.mergedHeads(name);
+          const rebasedOnly =
+            remote !== undefined &&
+            heads.includes(remote) &&
+            (yield* jj.read(["interdiff", "--from", remote, "--to", local, "--summary"])).trim() ===
+              "";
+          return heads.includes(local) || rebasedOnly ? [{ bookmark: name, changeId: change }] : [];
+        }),
       { concurrency: "unbounded" },
     );
     return merged.flat();

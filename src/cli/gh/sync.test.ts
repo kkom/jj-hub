@@ -108,6 +108,29 @@ describe("sync", () => {
     expect(repository.jj("bookmark", "list", "--all-remotes", "a", "b")).toBe("");
   });
 
+  // As above, with the stack rebased locally by a sync between the push and the merge.
+  it("abandons merged changes that a sync rebased since their push", async () => {
+    repository.jj("edit", "b");
+    repository.write("a.txt", "a, edited by b\n");
+    repository.jj("new", "b", "-m", "c");
+    repository.write("c.txt", "c\n");
+    repository.jj("git", "push", "--bookmark", "b");
+    moveTrunkOnGitHub(repository);
+    await syncIn(repository);
+    moveTrunkOnGitHub(repository, "later.txt");
+    squashMergeOnGitHub(repository, "b", { below: ["a"], deleted: false });
+    await syncIn(repository);
+    expect(repository.log()).toEqual(["c []"]);
+    expect(repository.files("@")).toEqual([
+      "a.txt",
+      "b.txt",
+      "base.txt",
+      "c.txt",
+      "later.txt",
+      "trunk.txt",
+    ]);
+  });
+
   it("keeps a change edited after its pull request merged", async () => {
     squashMergeOnGitHub(repository, "a", { deleted: false });
     editLocally(repository);
