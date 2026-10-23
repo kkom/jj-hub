@@ -117,16 +117,22 @@ export const mergedOnGitHub = (
 ): Effect.Effect<readonly MergedChange[], GitHubFailed | JjFailed, GitHub | Jj> =>
   Effect.flatMap(mergedHeadsOf(bookmarks), (heads) => mergedIn(bookmarks, heads));
 
-/** Forgets the bookmarks and their branches on GitHub, in one jj operation. */
+/**
+ * Forgets the bookmarks and their branches on GitHub, in one jj operation. A fetch has already
+ * deleted the bookmark of a branch deleted on GitHub, where it was unchanged locally, and jj warns
+ * about a name it can't find, so only the names still listed are passed.
+ */
 const forget = (names: readonly string[]) =>
   Effect.gen(function* () {
-    if (names.length > 0) {
+    const listed = yield* bookmarkTargets;
+    const present = names.filter((name) => listed.has(name));
+    if (present.length > 0) {
       const jj = yield* Jj;
       yield* jj.run([
         "bookmark",
         "forget",
         "--include-remotes",
-        ...names.map((name) => `exact:${name}`),
+        ...present.map((name) => `exact:${name}`),
       ]);
     }
   });
