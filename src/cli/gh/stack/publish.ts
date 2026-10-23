@@ -20,7 +20,7 @@ import {
   syncDescription,
 } from "./descriptions";
 import { basesFor, mustDissolve, registrationFor, titleAndBody } from "./plan";
-import { checkTrunk, type TrunkMismatch } from "./trunk";
+import { checkedTrunk, type TrunkMismatch } from "./trunk";
 
 export class SeveralStacks extends Data.TaggedError("SeveralStacks")<{
   readonly message: string;
@@ -70,6 +70,8 @@ const register = (
   });
 
 interface PublishOptions {
+  /** GitHub's default branch, which the bottom pull request is based on. */
+  readonly trunk: string;
   /** How a missing pull request is opened. It changes no existing one. */
   readonly draft: boolean;
   /** Sends the local description where it and the pull request's both changed, without merging. */
@@ -92,13 +94,12 @@ export type PublishFailed =
  */
 const publish = (
   stack: readonly StackChange[],
-  { draft, overwriteDescriptions }: PublishOptions,
+  { draft, overwriteDescriptions, trunk }: PublishOptions,
 ): Effect.Effect<void, PublishFailed, Git | GitHub | Jj> =>
   Effect.gen(function* () {
     const github = yield* GitHub;
     const jj = yield* Jj;
     const bookmarks = stack.map(({ bookmark }) => bookmark);
-    const trunk = yield* github.defaultBranch;
     const bases = basesFor(bookmarks, trunk);
     const found = yield* Effect.all(
       stack.map((change, index) =>
@@ -197,11 +198,11 @@ const publish = (
 /** Publishes the revision's change and the ones below it in its stack. */
 export const submit = (
   revision: string,
-  options: PublishOptions,
+  options: Omit<PublishOptions, "trunk">,
 ): Effect.Effect<void, PublishFailed, Git | GitHub | Jj> =>
   Effect.gen(function* () {
-    yield* checkTrunk(yield* (yield* GitHub).defaultBranch);
-    yield* publish(yield* downstackChanges(revision), options);
+    const trunk = yield* checkedTrunk;
+    yield* publish(yield* downstackChanges(revision), { ...options, trunk });
   });
 
 /**
@@ -211,6 +212,7 @@ export const submit = (
  */
 export const republish = (
   revision: string,
+  trunk: string,
 ): Effect.Effect<void, PublishFailed, Git | GitHub | Jj> =>
   Effect.gen(function* () {
     if ((yield* changesIn(stackRevset(revision))).length === 0) {
@@ -220,6 +222,6 @@ export const republish = (
     const targets = yield* bookmarkTargets;
     const top = stack.findLastIndex(({ bookmark }) => targets.get(bookmark)?.origin !== undefined);
     if (top !== -1) {
-      yield* publish(stack.slice(0, top + 1), { draft: true, overwriteDescriptions: false });
+      yield* publish(stack.slice(0, top + 1), { draft: true, overwriteDescriptions: false, trunk });
     }
   });

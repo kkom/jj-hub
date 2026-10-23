@@ -17,7 +17,7 @@ import {
   upstackRevset,
 } from "./stack/changes";
 import { type PublishFailed, republish } from "./stack/publish";
-import { checkTrunk } from "./stack/trunk";
+import { checkedTrunk } from "./stack/trunk";
 import { type NotCombined, sync } from "./sync";
 
 export class NotMergeable extends Data.TaggedError("NotMergeable")<{
@@ -71,8 +71,7 @@ export const merge = (
   revision: string,
 ): Effect.Effect<void, NotCombined | NotMergeable | PublishFailed, Git | GitHub | Jj> =>
   Effect.gen(function* () {
-    const trunk = yield* (yield* GitHub).defaultBranch;
-    yield* checkTrunk(trunk);
+    const trunk = yield* checkedTrunk;
     const changes = yield* downstackChanges(revision);
     const top = changes.at(-1)?.bookmark ?? "";
 
@@ -99,7 +98,7 @@ export const merge = (
       // Any bookmark left above the merged change names the rest of its stack.
       for (const bookmark of above) {
         if ((yield* commitsAt(bookmarkRevset(bookmark))).length > 0) {
-          yield* republish(bookmarkRevset(bookmark));
+          yield* republish(bookmarkRevset(bookmark), trunk);
           break;
         }
       }
