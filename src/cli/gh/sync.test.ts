@@ -110,6 +110,31 @@ describe("sync", () => {
     expect(repository.files("b")).toEqual(["a.txt", "b.txt", "base.txt"]);
   });
 
+  // The fetch drops the old commits of a branch GitHub rewrote, which takes whatever was on them
+  // off the stack.
+  describe("after GitHub rebased the rest of a stack", () => {
+    it("keeps the working copy on top of the stack", async () => {
+      squashMergeOnGitHub(repository, "a", { above: ["b"] });
+      await syncIn(repository);
+      expect(repository.jj("log", "--no-graph", "-r", "@-", "-T", "bookmarks")).toBe("b");
+    });
+
+    it("keeps editing the change the working copy was", async () => {
+      repository.jj("edit", "b");
+      squashMergeOnGitHub(repository, "a", { above: ["b"] });
+      await syncIn(repository);
+      expect(repository.jj("log", "--no-graph", "-r", "@", "-T", "bookmarks")).toBe("b");
+    });
+
+    it("keeps a change that isn't pushed on top of the stack", async () => {
+      repository.write("c.txt", "c\n");
+      repository.jj("describe", "-m", "c");
+      squashMergeOnGitHub(repository, "a", { above: ["b"] });
+      await syncIn(repository);
+      expect(repository.log()).toEqual(["b [b]", "c []"]);
+    });
+  });
+
   describe("when a branch changed on GitHub", () => {
     it("folds a commit GitHub added into an untouched local change", async () => {
       addCommitOnGitHub(repository, "a");
