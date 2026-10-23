@@ -113,10 +113,12 @@ export const combine = (
     }
     const keepLocal = jj.run(["bookmark", "set", name, "-r", local, "--allow-backwards"]);
     // GitHub's commits that the local change now replaces. Left alone they stay in the log as a
-    // second copy of the change.
+    // second copy of the change. What another bookmark holds above the pushed commit stays, such
+    // as GitHub's rewrite of the branch below, which the fetch moved that bookmark to.
+    const held = `::(bookmarks() ~ ${bookmarkRevset(name)}) ~ ::${remote}`;
     const dropCopies = jj.run([
       "abandon",
-      `((::${fetched} | ::${remote}) & mutable()) ~ ::${bookmarkRevset(name)}`,
+      `((::${fetched} | ::${remote}) & mutable()) ~ ::${bookmarkRevset(name)} ~ (${held})`,
     ]);
 
     if ((yield* commitsAt(`${remote} & ::${fetched}`)).length > 0) {

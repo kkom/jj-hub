@@ -32,6 +32,19 @@ const syncing = (repository: ScratchRepository) =>
 const syncIn = (repository: ScratchRepository): Promise<void> =>
   Effect.runPromise(syncing(repository));
 
+// Rebases `a` onto a moved trunk on GitHub, and `b` onto the new `a`, with `b` edited locally.
+const rebaseBoth = (repository: ScratchRepository): void => {
+  repository.jj("edit", "b");
+  repository.write("b-local.txt", "b, locally\n");
+  repository.jj("new");
+  repository.git("fetch", "--quiet");
+  const pushedA = repository.git("rev-parse", "origin/a").trim();
+  rebaseOnGitHub(repository, "a");
+  repository.git("checkout", "--quiet", "-B", "b", "origin/b");
+  repository.git("rebase", "--quiet", "--onto", "a", pushedA, "b");
+  repository.git("push", "--quiet", "--force", "origin", "b");
+};
+
 // Changes a file of the change `a`, which the working copy sits two changes above.
 const editLocally = (repository: ScratchRepository): void => {
   repository.jj("edit", "a");
@@ -171,6 +184,30 @@ describe("sync", () => {
       await syncIn(repository);
       expect(repository.log()).toEqual(["a [a]", "b [b]"]);
       expect(repository.files("b")).toEqual(["a.txt", "b.txt", "base.txt", "trunk.txt"]);
+    });
+
+    // GitHub's copy of `b` sits on its copy of `a`, which must not go with the copies of `b`.
+    describe("where GitHub rebased two branches", () => {
+      it("keeps the bookmark below", async () => {
+        rebaseBoth(repository);
+        await syncIn(repository);
+        expect(repository.log()).toEqual(["a [a]", "b [b]"]);
+        expect(repository.files("b")).toEqual([
+          "a.txt",
+          "b-local.txt",
+          "b.txt",
+          "base.txt",
+          "trunk.txt",
+        ]);
+      });
+
+      it("leaves no copy of GitHub's commits where both were edited locally", async () => {
+        repository.jj("edit", "a");
+        repository.write("a-local.txt", "a, locally\n");
+        rebaseBoth(repository);
+        await syncIn(repository);
+        expect(repository.log()).toEqual(["a [a]", "b [b]"]);
+      });
     });
 
     it("keeps an edited local change where GitHub only rebased the branch", async () => {
