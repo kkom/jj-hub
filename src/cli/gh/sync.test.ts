@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from "bun:test";
 
-import { Effect, Option } from "effect";
+import { Effect } from "effect";
 
 import {
   addCommitOnGitHub,
@@ -9,28 +9,15 @@ import {
   rewriteElsewhere,
   squashMergeOnGitHub,
 } from "../../testing/branch-changes";
-import { fakeGitHub, inRepository } from "../../testing/fake-github";
 import {
   pushedStack,
   removeScratchRepositories,
   type ScratchRepository,
 } from "../../testing/scratch-repository";
+import { syncIn, syncing } from "../../testing/sync";
 import { stackChanges } from "./stack/changes";
-import { sync } from "./sync";
 
 afterAll(removeScratchRepositories);
-
-// GitHub reports the pull requests `squashMergeOnGitHub` merged.
-const syncing = (repository: ScratchRepository) =>
-  sync().pipe(
-    inRepository(
-      repository,
-      fakeGitHub({}, Option.none(), { mergedHeads: repository.mergedHeads }),
-    ),
-  );
-
-const syncIn = (repository: ScratchRepository): Promise<void> =>
-  Effect.runPromise(syncing(repository));
 
 // Rebases `a` onto a moved trunk on GitHub, and `b` onto the new `a`, with `b` edited locally.
 const rebaseBoth = (repository: ScratchRepository): void => {

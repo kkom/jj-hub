@@ -2,8 +2,9 @@ import { Array as EffectArray, Console, Data, Effect, Match, Option } from "effe
 
 import type { Git, GitFailed } from "../../../clients/git";
 import { GitHub, type GitHubFailed } from "../../../clients/github/client";
-import type { PullRequestNumber, RemoteStack } from "../../../clients/github/types";
+import type { PullRequest, PullRequestNumber, RemoteStack } from "../../../clients/github/types";
 import { Jj, type JjFailed } from "../../../clients/jj";
+import { PrDescriptions } from "../../../clients/pr-descriptions";
 import {
   anyOf,
   bookmarkRevset,
@@ -21,6 +22,7 @@ import {
   descriptionsOf,
   ignoresClaudeCodeFooter,
   syncDescription,
+  type SyncedDescription,
 } from "./descriptions";
 import { basesFor, mustDissolve, registrationFor, titleAndBody } from "./plan";
 import type { NotCombined } from "./reconcile";
@@ -83,6 +85,12 @@ interface PublishOptions {
   readonly overwriteDescriptions: boolean;
 }
 
+/** A pull request already open for a change, and the description they agree on. */
+interface OpenPullRequest {
+  readonly pullRequest: PullRequest;
+  readonly synced: SyncedDescription;
+}
+
 export type PublishFailed =
   | DescriptionConflict
   | GitFailed
@@ -102,10 +110,11 @@ export type SubmitFailed = BranchesDeleted | NotCombined | PublishFailed;
 const publish = (
   stack: readonly StackChange[],
   { draft, overwriteDescriptions, trunk }: PublishOptions,
-): Effect.Effect<void, PublishFailed, Git | GitHub | Jj> =>
+): Effect.Effect<void, PublishFailed, Git | GitHub | Jj | PrDescriptions> =>
   Effect.gen(function* () {
     const github = yield* GitHub;
     const jj = yield* Jj;
+    const records = yield* PrDescriptions;
     const bookmarks = stack.map(({ bookmark }) => bookmark);
     const bases = basesFor(bookmarks, trunk);
     const found = yield* Effect.all(
@@ -127,28 +136,34 @@ const publish = (
     // Before anything changes on GitHub, so a conflict in a description stops the whole submit.
     // One at a time, because rewording a change rewrites the ones above it.
     const changes = [];
-    for (const entry of found) {
-      const pushed = targets.get(entry.change.bookmark)?.origin;
+    for (const { base, change, pullRequest } of found) {
+      const pushed = targets.get(change.bookmark)?.origin;
+      const options = {
+        ignoreClaudeCodeFooter,
+        overwriteDescriptions,
+        pushedCommit: pushed,
+        pushedDescription:
+          (pushed === undefined ? undefined : pushedDescriptions.get(pushed)) ?? "",
+      };
       changes.push({
-        ...entry,
-        description: Option.isNone(entry.pullRequest)
-          ? Option.none<string>()
-          : yield* syncDescription(entry.change, entry.pullRequest.value, {
-              ignoreClaudeCodeFooter,
-              overwriteDescriptions,
-              pushedDescription:
-                (pushed === undefined ? undefined : pushedDescriptions.get(pushed)) ?? "",
+        base,
+        change,
+        open: Option.isNone(pullRequest)
+          ? Option.none<OpenPullRequest>()
+          : Option.some({
+              pullRequest: pullRequest.value,
+              synced: yield* syncDescription(change, pullRequest.value, options),
             }),
       });
     }
 
     // GitHub rejects a base change on a pull request that is in a stack, and can only add to a
     // stack's top, so a stack that doesn't fit what is wanted is dissolved first.
-    const moving = changes.flatMap(({ base, pullRequest }) =>
-      Option.isSome(pullRequest) && pullRequest.value.base !== base ? [pullRequest.value] : [],
+    const moving = changes.flatMap(({ base, open }) =>
+      Option.isSome(open) && open.value.pullRequest.base !== base ? [open.value.pullRequest] : [],
     );
-    const wanted = changes.map(({ pullRequest }) =>
-      Option.isSome(pullRequest) ? Option.some(pullRequest.value.number) : Option.none(),
+    const wanted = changes.map(({ open }) =>
+      Option.map(open, ({ pullRequest }) => pullRequest.number),
     );
     const existing = yield* stackContaining(wanted.flatMap((number) => Option.toArray(number)));
     const dissolve = mustDissolve(existing, wanted, moving.length > 0);
@@ -174,10 +189,19 @@ const publish = (
       "push",
       ...bookmarks.flatMap((bookmark) => ["--bookmark", `exact:${bookmark}`]),
     ]);
+    // The commits pushed, which the records are agreed for.
+    const pushedTargets = yield* bookmarkTargets;
+    const record = (bookmark: string, description: string, pullRequest: PullRequestNumber) =>
+      records.write({
+        bookmark,
+        commit: pushedTargets.get(bookmark)?.local ?? "",
+        description,
+        pullRequest,
+      });
 
     const numbers = [];
-    for (const { base, change, description, pullRequest } of changes) {
-      if (Option.isNone(pullRequest)) {
+    for (const { base, change, open } of changes) {
+      if (Option.isNone(open)) {
         const created = yield* github.createPullRequest({
           ...titleAndBody(change.description),
           base,
@@ -185,16 +209,21 @@ const publish = (
           head: change.bookmark,
         });
         yield* Console.error(`opened #${created} for ${change.bookmark}`);
+        yield* record(change.bookmark, change.description, created);
         numbers.push(created);
       } else {
-        const { number } = pullRequest.value;
+        const {
+          pullRequest: { number },
+          synced: { send, text },
+        } = open.value;
         if (moved.has(number) && base !== trunk) {
           yield* github.setBase(number, base);
         }
-        if (Option.isSome(description)) {
-          yield* github.setDescription(number, titleAndBody(description.value));
+        if (send) {
+          yield* github.setDescription(number, titleAndBody(text));
           yield* Console.error(`updated the description of #${number}`);
         }
+        yield* record(change.bookmark, text, number);
         numbers.push(number);
       }
     }
@@ -210,7 +239,7 @@ const publish = (
 export const submit = (
   revision: string,
   options: Omit<PublishOptions, "trunk">,
-): Effect.Effect<void, SubmitFailed, Git | GitHub | Jj> =>
+): Effect.Effect<void, SubmitFailed, Git | GitHub | Jj | PrDescriptions> =>
   Effect.gen(function* () {
     const trunk = yield* checkedTrunk;
     // Read first, so a stack that isn't one fails before the sync rewrites anything.
@@ -242,7 +271,7 @@ export const submit = (
 export const republish = (
   revision: string,
   trunk: string,
-): Effect.Effect<void, PublishFailed, Git | GitHub | Jj> =>
+): Effect.Effect<void, PublishFailed, Git | GitHub | Jj | PrDescriptions> =>
   Effect.gen(function* () {
     if ((yield* changesIn(stackRevset(revision))).length === 0) {
       return;
