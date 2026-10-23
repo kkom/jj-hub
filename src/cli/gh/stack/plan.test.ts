@@ -7,6 +7,7 @@ import { pullRequests, stackOf } from "../../../testing/fake-github";
 import {
   agreedDescription,
   basesFor,
+  descriptionFrom,
   descriptionSyncFor,
   mustDissolve,
   normalizedDescription,
@@ -122,10 +123,57 @@ describe("registrationFor", () => {
 
 describe("titleAndBody", () => {
   it("takes the first line as the title and the rest as the body", () => {
-    expect(titleAndBody("Add a thing\n\nBecause.\n\nTrailer: x\n")).toEqual({
+    expect(titleAndBody("Add a thing\n\nBecause.\n\nTrailer: x\n")).toStrictEqual({
       body: "Because.\n\nTrailer: x",
       title: "Add a thing",
     });
+  });
+
+  it("keeps the indent of the body's first line", () => {
+    expect(titleAndBody("Add a thing\n\n  \n    code\nmore")).toStrictEqual({
+      body: "    code\nmore",
+      title: "Add a thing",
+    });
+  });
+});
+
+// Every description of up to four lines built from these, which covers blank, indented and
+// whitespace-only lines in each position.
+const lineKinds = ["", "  ", "Text", "    code", "\tcode", "  - nested", "Text  "];
+const withLine = (prefixes: readonly string[]): string[] =>
+  prefixes.flatMap((prefix) => lineKinds.map((line) => `${prefix}\n${line}`));
+const twoLines = withLine(lineKinds);
+const threeLines = withLine(twoLines);
+const descriptions = [...lineKinds, ...twoLines, ...threeLines, ...withLine(threeLines)];
+
+/** The non-blank lines of a description, without the whitespace at its end. */
+const contentLines = (description: string): string =>
+  description
+    .trimEnd()
+    .split("\n")
+    .filter((line) => line.trim() !== "")
+    .join("\n");
+
+const roundTrip = (description: string): string => descriptionFrom(titleAndBody(description));
+
+describe("titleAndBody and descriptionFrom", () => {
+  it("change a description at most once, in its blank lines and the whitespace at its end", () => {
+    const changed = descriptions.filter((description) => {
+      const once = roundTrip(description);
+      return roundTrip(once) !== once || contentLines(once) !== contentLines(description);
+    });
+    expect(changed).toStrictEqual([]);
+  });
+
+  it("give back a pull request's title and a body that starts and ends with text", () => {
+    const bodies = descriptions.filter(
+      (body) => body === body.trimEnd() && body.split("\n")[0]?.trim() !== "",
+    );
+    const titled = ["", "Title"].flatMap((title) => bodies.map((body) => ({ body, title })));
+    const changed = titled.filter(
+      (pullRequest) => !Bun.deepEquals(titleAndBody(descriptionFrom(pullRequest)), pullRequest),
+    );
+    expect(changed).toStrictEqual([]);
   });
 });
 
@@ -136,6 +184,12 @@ describe("normalizedDescription", () => {
   it("reads GitHub's line endings and jj's trailing newline as the same text", () => {
     expect(normalizedDescription("A title\r\n\r\nWhy.\r\n", plain)).toBe("A title\n\nWhy.");
     expect(normalizedDescription("A title\n\nWhy.\n", plain)).toBe("A title\n\nWhy.");
+  });
+
+  it("keeps the indent of a body's first line with GitHub's line endings", () => {
+    expect(normalizedDescription("A title\r\n\r\n  \r\n    code\r\n", plain)).toBe(
+      "A title\n\n    code",
+    );
   });
 
   const withFooters = [

@@ -63,12 +63,16 @@ export const registrationFor = (
     : { _tag: "Unchanged" };
 };
 
-/** A change's description split the way a pull request takes it: the first line, then the rest. */
+/**
+ * A change's description split the way a pull request takes it: the first line, then the rest
+ * without its leading blank lines. The rest keeps the indent of its first line, which Markdown
+ * reads as a code block or a nested list item.
+ */
 export const titleAndBody = (
   description: string,
 ): { readonly body: string; readonly title: string } => {
   const [title = "", ...rest] = description.trimEnd().split("\n");
-  return { body: rest.join("\n").trim(), title };
+  return { body: rest.join("\n").replace(/^\s*\n/u, ""), title };
 };
 
 /** A title and body as one description, with a blank line between, as jj and GitHub both show it. */
