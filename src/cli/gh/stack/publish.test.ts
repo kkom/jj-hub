@@ -127,6 +127,47 @@ describe("submit", () => {
       expect(github.calls).toEqual(["describe #1 as a better"]);
     });
 
+    it("sends a description changed locally and pushed without submit", async () => {
+      const repository = pushed();
+      repository.jj("describe", "-r", "a", "-m", "a better\n\nfirst\n\nsecond");
+      repository.jj("git", "push", "--bookmark", "a", "--bookmark", "b");
+      const github = githubWith("a", "first\n\nsecond");
+      await Effect.runPromise(submitIn(repository, github));
+      expect(description(repository, "a")).toBe("a better\n\nfirst\n\nsecond");
+      expect(github.calls).toEqual(["describe #1 as a better"]);
+    });
+
+    it("sends an upstack description pushed without submit, after taking a lower one from GitHub", async () => {
+      const repository = pushed();
+      repository.jj("describe", "-r", "b", "-m", "b better");
+      repository.jj("git", "push", "--bookmark", "b");
+      const github = githubWith("a", "first\n\nsecond, reworded");
+      await Effect.runPromise(submitIn(repository, github));
+      expect(description(repository, "a")).toBe("a\n\nfirst\n\nsecond, reworded");
+      expect(description(repository, "b")).toBe("b better");
+      expect(github.calls).toEqual(["describe #2 as b better"]);
+    });
+
+    it("sends a description changed again after a push without submit", async () => {
+      const repository = pushed();
+      repository.jj("describe", "-r", "a", "-m", "a better\n\nfirst\n\nsecond");
+      repository.jj("git", "push", "--bookmark", "a", "--bookmark", "b");
+      repository.jj("describe", "-r", "a", "-m", "a best\n\nfirst\n\nsecond");
+      const github = githubWith("a", "first\n\nsecond");
+      await Effect.runPromise(submitIn(repository, github));
+      expect(github.calls).toEqual(["describe #1 as a best"]);
+    });
+
+    it("takes GitHub's edit where its text came from a change squashed into this one", async () => {
+      const repository = pushed();
+      repository.jj("new", "main", "-m", "a\n\nfirst\n\nsecond, reworded");
+      repository.jj("squash", "--from", "@", "--into", "a", "--use-destination-message");
+      const github = githubWith("a", "first\n\nsecond, reworded");
+      await Effect.runPromise(submitIn(repository, github, { revision: "b" }));
+      expect(description(repository, "a")).toBe("a\n\nfirst\n\nsecond, reworded");
+      expect(github.calls).toEqual([]);
+    });
+
     it("writes a description changed on GitHub into the change", async () => {
       const repository = pushed();
       const github = githubWith("a", "first\r\n\r\nsecond, reworded");
@@ -153,6 +194,16 @@ describe("submit", () => {
         await Effect.runPromise(submitIn(repository, github));
         expect(description(repository, "a")).toBe("a\n\nfirst\n\nsecond");
         expect(github.calls).toEqual([]);
+      });
+
+      it("sends a description pushed without submit when told to ignore the footer", async () => {
+        const repository = pushed();
+        repository.jj("config", "set", "--repo", "jj-octo.ignore-claude-code-footer", "true");
+        repository.jj("describe", "-r", "a", "-m", "a better\n\nfirst\n\nsecond");
+        repository.jj("git", "push", "--bookmark", "a", "--bookmark", "b");
+        const github = githubWith("a", `first\n\nsecond${footer}`);
+        await Effect.runPromise(submitIn(repository, github));
+        expect(github.calls).toEqual(["describe #1 as a better"]);
       });
 
       it("fails for a value of the setting other than true or false", async () => {
