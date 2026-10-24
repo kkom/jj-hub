@@ -10,6 +10,10 @@ So try the other paths, and report the error itself rather than concluding GitHu
 
 Checks and runs take minutes to appear, so an empty listing doesn't mean there will be none.
 
+## Leave an abandoned branch in place
+
+A cloud session can't delete a remote branch. `branch-cleanup.yaml` deletes it daily once its last commit is two weeks old, unless an open pull request has it as its head or base. It keeps a branch pushed to after its latest pull request closed, and lists it in each run's summary for a person to delete. So give work that follows a closed pull request a new branch.
+
 ## Follow the PR template
 
 Structure the description as `.github/pull_request_template.md` does, following the guidance in its comments.
