@@ -4,6 +4,7 @@ import type { Git } from "../clients/git";
 import { GitHub } from "../clients/github/client";
 import {
   type PullRequest,
+  type ListedPullRequest,
   type PullRequestNumber,
   PullRequestNumberSchema,
   type RemoteStack,
@@ -14,17 +15,17 @@ import type { PrDescriptions } from "../clients/pr-descriptions";
 import type { ScratchRepository } from "./scratch-repository";
 
 interface FakeGitHubOptions {
-  /** The head commit of each merged pull request from the branch. None by default. */
-  readonly mergedHeads?: (branch: string) => readonly string[];
   /** What GitHub does to the repository when it merges, which the fake has no repository to do. */
   readonly onMerge?: (pullRequest: PullRequestNumber) => void;
+  /** The pull requests from the branch in any state, newest first. None by default. */
+  readonly pullRequestsFrom?: (branch: string) => readonly ListedPullRequest[];
 }
 
 // A GitHub with the given open pull requests and stack, recording every call that changes something.
 export const fakeGitHub = (
   open: Readonly<Record<string, PullRequest>>,
   stack: Option.Option<RemoteStack>,
-  { mergedHeads = () => [], onMerge }: FakeGitHubOptions = {},
+  { onMerge, pullRequestsFrom = () => [] }: FakeGitHubOptions = {},
 ): { readonly calls: readonly string[]; readonly layer: Layer.Layer<GitHub> } => {
   const calls: string[] = [];
   let registered = stack;
@@ -65,8 +66,8 @@ export const fakeGitHub = (
         ),
         Effect.as("merged"),
       ),
-    mergedHeads: (branch) => Effect.sync(() => mergedHeads(branch)),
     openPullRequest: (branch) => Effect.succeed(Option.fromNullishOr(open[branch])),
+    pullRequestsFrom: (branch) => Effect.sync(() => pullRequestsFrom(branch)),
     setBase: (number, base) => record(`base #${number} → ${base}`),
     setDescription: (number, { title }) => record(`describe #${number} as ${title}`),
     stackOf: () => Effect.sync(() => registered),

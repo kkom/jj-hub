@@ -5,16 +5,23 @@ import type { Connection } from "./connection";
 import { bodyOf } from "./openapi";
 import type { Repository } from "./repository";
 import {
-  ClosedPullRequests,
+  AnyPullRequests,
   CreatedPullRequest,
   CreatedStack,
+  listedPullRequest,
   MergeResult,
   PullRequests,
   RepositoryDetails,
   Stacks,
   StartedMerge,
 } from "./responses";
-import type { PullRequest, PullRequestNumber, RemoteStack, StackNumber } from "./types";
+import type {
+  PullRequest,
+  ListedPullRequest,
+  PullRequestNumber,
+  RemoteStack,
+  StackNumber,
+} from "./types";
 
 export class GitHubFailed extends Data.TaggedError("GitHubFailed")<{ readonly message: string }> {}
 
@@ -46,11 +53,13 @@ export class GitHub extends Context.Service<
     readonly mergePullRequest: (
       pullRequest: PullRequestNumber,
     ) => Effect.Effect<void, GitHubFailed>;
-    /** The head commit of each merged pull request from the branch. */
-    readonly mergedHeads: (branch: string) => Effect.Effect<readonly string[], GitHubFailed>;
     readonly openPullRequest: (
       branch: string,
     ) => Effect.Effect<Option.Option<PullRequest>, GitHubFailed>;
+    /** The pull requests from the branch in any state, newest first, up to 100. */
+    readonly pullRequestsFrom: (
+      branch: string,
+    ) => Effect.Effect<readonly ListedPullRequest[], GitHubFailed>;
     readonly setBase: (
       pullRequest: PullRequestNumber,
       base: string,
@@ -153,7 +162,7 @@ export const GitHubLive = (
 
       const mergeRequest = (path: string) => json(MergeResult)(HttpClientRequest.get(repo(path)));
 
-      const fromBranch = (branch: string, state: "closed" | "open") =>
+      const fromBranch = (branch: string, state: "all" | "open") =>
         repo(`/pulls?state=${state}&head=${repository.owner}:${encodeURIComponent(branch)}`);
 
       return {
@@ -213,12 +222,6 @@ export const GitHubLive = (
               message: `merging #${pullRequest} ended ${settled.status}: ${settled.details.message}`,
             });
           }),
-        mergedHeads: (branch) =>
-          json(ClosedPullRequests)(HttpClientRequest.get(fromBranch(branch, "closed"))).pipe(
-            Effect.map((closed) =>
-              closed.filter(({ merged_at }) => merged_at !== null).map(({ head }) => head.sha),
-            ),
-          ),
         openPullRequest: (branch) =>
           json(PullRequests)(HttpClientRequest.get(fromBranch(branch, "open"))).pipe(
             Effect.map((found) =>
@@ -234,6 +237,10 @@ export const GitHubLive = (
               ),
             ),
           ),
+        pullRequestsFrom: (branch) =>
+          json(AnyPullRequests)(
+            HttpClientRequest.get(`${fromBranch(branch, "all")}&per_page=100`),
+          ).pipe(Effect.map((found) => found.map((listed) => listedPullRequest(listed)))),
         setBase: (pullRequest, base) =>
           send(
             HttpClientRequest.patch(repo(`/pulls/${pullRequest}`)).pipe(

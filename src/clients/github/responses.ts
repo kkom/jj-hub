@@ -1,7 +1,7 @@
 import { Schema } from "effect";
 
 import { responseOf } from "./openapi";
-import { PullRequestNumberSchema, StackNumberSchema } from "./types";
+import { type ListedPullRequest, PullRequestNumberSchema, StackNumberSchema } from "./types";
 
 // The fields read from each GitHub response the client decodes.
 
@@ -22,11 +22,16 @@ export const PullRequests = responseOf<"pulls/list">()(
     }),
   ),
 );
-export const ClosedPullRequests = responseOf<"pulls/list">()(
+export const AnyPullRequests = responseOf<"pulls/list">()(
   Schema.Array(
     Schema.Struct({
+      draft: Schema.optionalKey(Schema.Boolean),
       head: Schema.Struct({ sha: Schema.String }),
+      html_url: Schema.String,
       merged_at: Schema.NullOr(Schema.String),
+      number: PullRequestNumberSchema,
+      state: Schema.String,
+      title: Schema.String,
     }),
   ),
 );
@@ -51,3 +56,18 @@ const MergeRequest = Schema.Struct({
 });
 export const StartedMerge = responseOf<"pulls/merge-async">()(MergeRequest);
 export const MergeResult = responseOf<"pulls/get-merge-async-result">()(MergeRequest);
+
+/** One pull request of an `AnyPullRequests` listing, with its state in one value. */
+export const listedPullRequest = ({
+  draft,
+  head,
+  html_url,
+  merged_at,
+  number,
+  state,
+  title,
+}: (typeof AnyPullRequests.Type)[number]): ListedPullRequest => {
+  const open = draft === true ? "draft" : "ready";
+  const closed = merged_at === null ? "closed" : "merged";
+  return { head: head.sha, number, state: state === "open" ? open : closed, title, url: html_url };
+};
