@@ -1,17 +1,20 @@
-import { Context, Data, Effect, Layer, Option, Schedule, Schema } from "effect";
+import { Context, Data, Effect, Layer, Option, Schedule, type Schema } from "effect";
 import { FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
 
 import type { Connection } from "./connection";
-import { bodyOf, responseOf } from "./openapi";
+import { bodyOf } from "./openapi";
 import type { Repository } from "./repository";
 import {
-  type PullRequest,
-  type PullRequestNumber,
-  PullRequestNumberSchema,
-  type RemoteStack,
-  type StackNumber,
-  StackNumberSchema,
-} from "./types";
+  ClosedPullRequests,
+  CreatedPullRequest,
+  CreatedStack,
+  MergeResult,
+  PullRequests,
+  RepositoryDetails,
+  Stacks,
+  StartedMerge,
+} from "./responses";
+import type { PullRequest, PullRequestNumber, RemoteStack, StackNumber } from "./types";
 
 export class GitHubFailed extends Data.TaggedError("GitHubFailed")<{ readonly message: string }> {}
 
@@ -63,53 +66,6 @@ export class GitHub extends Context.Service<
     readonly unstack: (stack: StackNumber) => Effect.Effect<void, GitHubFailed>;
   }
 >()("jj-octo/GitHub") {}
-
-const CreatedPullRequest = responseOf<"pulls/create">()(
-  Schema.Struct({ number: PullRequestNumberSchema }),
-);
-const CreatedStack = responseOf<"pull-request-stacks/create">()(
-  Schema.Struct({ number: StackNumberSchema }),
-);
-const PullRequests = responseOf<"pulls/list">()(
-  Schema.Array(
-    Schema.Struct({
-      base: Schema.Struct({ ref: Schema.String }),
-      body: Schema.NullOr(Schema.String),
-      draft: Schema.optionalKey(Schema.Boolean),
-      number: PullRequestNumberSchema,
-      title: Schema.String,
-    }),
-  ),
-);
-const ClosedPullRequests = responseOf<"pulls/list">()(
-  Schema.Array(
-    Schema.Struct({
-      head: Schema.Struct({ sha: Schema.String }),
-      merged_at: Schema.NullOr(Schema.String),
-    }),
-  ),
-);
-const StackedPullRequest = Schema.Struct({
-  number: PullRequestNumberSchema,
-  state: Schema.Literals(["closed", "open"]),
-});
-const Stacks = responseOf<"pull-request-stacks/list">()(
-  Schema.Array(
-    Schema.Struct({ number: StackNumberSchema, pull_requests: Schema.Array(StackedPullRequest) }),
-  ),
-);
-const RepositoryDetails = responseOf<"repos/get">()(
-  Schema.Struct({ default_branch: Schema.String }),
-);
-const MergeRequest = Schema.Struct({
-  details: Schema.Struct({
-    message: Schema.String,
-    uuid: Schema.optionalKey(Schema.String),
-  }),
-  status: Schema.Literals(["enqueued", "failed", "merged", "pending"]),
-});
-const StartedMerge = responseOf<"pulls/merge-async">()(MergeRequest);
-const MergeResult = responseOf<"pulls/get-merge-async-result">()(MergeRequest);
 
 export const GitHubLive = (
   repository: Repository,
