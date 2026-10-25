@@ -64,6 +64,22 @@ const logOfA = {
   result: "a  #7 draft  not pushed\n",
 };
 
+// GitHub's answer to a request for every pull request from branch `a`.
+const listOfA = ({ path: requestPath }: InterceptedRequest) =>
+  requestPath === "/repos/owner/name/pulls?state=all&head=owner:a&per_page=100"
+    ? [
+        {
+          draft: false,
+          head: { sha: "0000000" },
+          html_url: "https://github.com/owner/name/pull/7",
+          merged_at: null,
+          number: 7,
+          state: "open",
+          title: "Add a",
+        },
+      ]
+    : [];
+
 // A repository with change `a` on `main`, whose `origin` is a GitHub repository, and the
 // environment that runs the file in it with its own configuration.
 const checkoutOfA = () => {
@@ -92,6 +108,28 @@ describe.each(builds)("$name", ({ command }) => {
       return run(command, ["log"], { cwd, env });
     });
     expect(received).toStrictEqual(logOfA);
+  });
+
+  it("links the pull requests GitHub lists for a branch", async () => {
+    const received = await throughProxy("api.github.com", listOfA, (proxy) => {
+      const { cwd, env } = checkoutOfA();
+      return run(command, ["links"], {
+        cwd,
+        env: {
+          ...env,
+          GH_TOKEN: "test-token",
+          HTTPS_PROXY: proxy.url,
+          NODE_EXTRA_CA_CERTS: proxy.caFile,
+        },
+      });
+    });
+    expect(received).toStrictEqual({
+      log: [
+        "CONNECT api.github.com:443",
+        "GET api.github.com/repos/owner/name/pulls?state=all&head=owner:a&per_page=100",
+      ],
+      result: "👀 [#7 Add a](https://github.com/owner/name/pull/7)\n",
+    });
   });
 
   it("reads pull requests through the proxy HTTPS_PROXY names", async () => {
