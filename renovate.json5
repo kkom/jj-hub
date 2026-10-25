@@ -6,7 +6,12 @@
   dependencyDashboardOSVVulnerabilitySummary: "unresolved",
   osvVulnerabilityAlerts: true,
   timezone: "Europe/London",
-  extends: ["config:recommended", "helpers:pinGitHubActionDigests"],
+  extends: [
+    "config:recommended",
+    "helpers:pinGitHubActionDigests",
+    // Reads the `# renovate:` comment above a workflow's `…_VERSION` value.
+    "customManagers:githubActionsVersions",
+  ],
   lockFileMaintenance: {
     enabled: true,
     commitMessagePrefix: "[{{manager}}]",
