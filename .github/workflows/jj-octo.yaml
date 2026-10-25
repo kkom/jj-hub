@@ -155,9 +155,10 @@ jobs:
         run: bun install --frozen-lockfile
 
       # bun can't publish with the workflow's identity, so npm does it. `prepack` builds the file.
+      # Publishing with the identity needs npm 11.5.1 or later, newer than the runner's own npm.
       - name: Publish to npm
         if: steps.version.outputs.published == ''
-        run: npm publish --access public --provenance
+        run: npx --yes npm@11.21.1 publish --access public --provenance
 
       - name: Download the executables
         if: steps.version.outputs.release == 'true'
