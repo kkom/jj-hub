@@ -14,7 +14,7 @@ export const syncing = (
   sync().pipe(
     inRepository(
       repository,
-      fakeGitHub({}, Option.none(), { mergedHeads: repository.mergedHeads }),
+      fakeGitHub({}, Option.none(), { pullRequestsFrom: repository.pullRequestsFrom }),
     ),
   );
 

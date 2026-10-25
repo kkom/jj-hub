@@ -24,7 +24,7 @@ const submitting = (
   open: Parameters<typeof fakeGitHub>[0],
   revision: string,
 ) => {
-  const github = fakeGitHub(open, Option.none(), { mergedHeads: repository.mergedHeads });
+  const github = fakeGitHub(open, Option.none(), { pullRequestsFrom: repository.pullRequestsFrom });
   return {
     calls: github.calls,
     program: submit(revision, { draft: true, overwriteDescriptions: false }).pipe(

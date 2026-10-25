@@ -17,8 +17,8 @@ const open = { a: openPullRequest("main", 1, "a"), b: openPullRequest("a", 2, "b
 
 // GitHub reports the pull requests `squashMergeOnGitHub` merged, and merges as `onMerge` says.
 const mergingIn = (repository: ScratchRepository, onMerge: () => void) => ({
-  mergedHeads: repository.mergedHeads,
   onMerge,
+  pullRequestsFrom: repository.pullRequestsFrom,
 });
 
 const mergeIn = (

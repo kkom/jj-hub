@@ -80,9 +80,18 @@ export const mergedHeadsOf = (
   Effect.gen(function* () {
     const github = yield* GitHub;
     const pushed = pushedOf(bookmarks);
-    const heads = yield* Effect.forEach(pushed, ({ name }) => github.mergedHeads(name), {
-      concurrency: "unbounded",
-    });
+    const heads = yield* Effect.forEach(
+      pushed,
+      ({ name }) =>
+        github
+          .pullRequestsFrom(name)
+          .pipe(
+            Effect.map((pullRequests) =>
+              pullRequests.filter(({ state }) => state === "merged").map(({ head }) => head),
+            ),
+          ),
+      { concurrency: "unbounded" },
+    );
     return Object.fromEntries(pushed.map(({ name }, index) => [name, heads[index] ?? []]));
   });
 

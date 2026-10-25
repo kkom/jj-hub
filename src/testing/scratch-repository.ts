@@ -15,6 +15,7 @@ import { Effect, Layer } from "effect";
 
 import { lines } from "../cli/gh/stack/changes";
 import { type Git, gitLayer } from "../clients/git";
+import { type ListedPullRequest, PullRequestNumberSchema } from "../clients/github/types";
 import { type Jj, jjLayer } from "../clients/jj";
 import { PrDescriptions, prDescriptionsLayer } from "../clients/pr-descriptions";
 
@@ -45,12 +46,12 @@ export interface ScratchRepository {
   readonly layerAt: (directory: string) => Layer.Layer<Git | Jj | PrDescriptions>;
   /** Each described change above the trunk, bottom to top, as `description [bookmarks]`. */
   readonly log: () => readonly string[];
-  /** The head commit of each pull request from the branch that `mergedOnGitHub` recorded. */
-  readonly mergedHeads: (branch: string) => readonly string[];
   /** Records that GitHub merged a pull request from the branch, whose head was the commit. */
   readonly mergedOnGitHub: (branch: string, head: string) => void;
   /** What the jj commands that `layer` ran to change something printed, in order. */
   readonly printed: () => string;
+  /** The pull requests from the branch that `mergedOnGitHub` recorded, newest first. */
+  readonly pullRequestsFrom: (branch: string) => readonly ListedPullRequest[];
   /** Adds one change per name on top of `main`, each with a file and a bookmark of that name. */
   readonly stack: (...names: readonly string[]) => void;
   /** Writes a file into the working copy of the second jj clone. */
@@ -144,7 +145,7 @@ const open = (root: string): ScratchRepository => {
   const write = (file: string, content: string): void => {
     writeFileSync(path.join(repository, file), content);
   };
-  const merged: { readonly branch: string; readonly head: string }[] = [];
+  const merged: { readonly branch: string; readonly pullRequest: ListedPullRequest }[] = [];
   const printed: string[] = [];
   const layerIn = (directory: string) =>
     layerAt(directory, env, (text) => {
@@ -178,12 +179,22 @@ const open = (root: string): ScratchRepository => {
           String.raw`description.first_line() ++ " [" ++ local_bookmarks.map(|b| b.name()).join(",") ++ "]\n"`,
         ),
       ),
-    mergedHeads: (branch) =>
-      merged.filter((pullRequest) => pullRequest.branch === branch).map(({ head }) => head),
     mergedOnGitHub: (branch, head) => {
-      merged.push({ branch, head });
+      const number = merged.length + 1;
+      merged.unshift({
+        branch,
+        pullRequest: {
+          head,
+          number: PullRequestNumberSchema.make(number),
+          state: "merged",
+          title: branch,
+          url: `https://github.com/kkom/jj-octo/pull/${number}`,
+        },
+      });
     },
     printed: () => printed.join(""),
+    pullRequestsFrom: (branch) =>
+      merged.filter((recorded) => recorded.branch === branch).map(({ pullRequest }) => pullRequest),
     records: (effect) =>
       Effect.runPromise(Effect.flatMap(PrDescriptions, effect).pipe(Effect.provide(layer))),
     stack: (...names) => {
