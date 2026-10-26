@@ -106,18 +106,22 @@ export const stackPullRequests = (
       ],
       { concurrency: "unbounded" },
     );
-    const linked = stack.flatMap(({ bookmark, commitId }, index) =>
-      Option.toArray(
-        pullRequestOf(found[index] ?? [], commitId, targets.get(bookmark)?.origin),
-      ).map((pullRequest) =>
-        Option.match(Option.fromNullishOr(counts.get(commitId)), {
-          onNone: () =>
-            Effect.fail(new JjFailed({ message: `jj printed no line counts for ${commitId}` })),
-          onSome: (changed) => Effect.succeed<LinkedPullRequest>({ ...pullRequest, ...changed }),
-        }),
-      ),
-    );
-    return (yield* Effect.all(linked)).toReversed();
+    const linked: LinkedPullRequest[] = [];
+    for (const [index, { bookmark, commitId }] of stack.entries()) {
+      const pullRequest = pullRequestOf(
+        found[index] ?? [],
+        commitId,
+        targets.get(bookmark)?.origin,
+      );
+      const changed = counts.get(commitId);
+      if (Option.isSome(pullRequest)) {
+        if (changed === undefined) {
+          return yield* new JjFailed({ message: `jj printed no line counts for ${commitId}` });
+        }
+        linked.push({ ...pullRequest.value, ...changed });
+      }
+    }
+    return linked.toReversed();
   });
 
 /** Prints the links to the stack's pull requests, and writes them to the clipboard if asked. */

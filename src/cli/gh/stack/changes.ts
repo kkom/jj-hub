@@ -39,15 +39,15 @@ export const parseDescription = (json: string): string => {
   return typeof parsed === "string" ? parsed : "";
 };
 
+interface ReadLogOptions {
+  readonly ignoreWorkingCopy?: boolean;
+}
+
 /**
  * What `jj log` prints for the revset's commits with the template, bottom first.
  * `ignoreWorkingCopy` skips the snapshot of the working copy, so the read can run alongside another
  * jj command that takes one.
  */
-interface ReadLogOptions {
-  readonly ignoreWorkingCopy?: boolean;
-}
-
 export const readLog = (
   revset: string,
   template: string,
@@ -88,8 +88,8 @@ export interface LineCounts {
 
 /**
  * The lines each of the commits adds and removes, by commit id. It skips the snapshot, so it can
- * run alongside `bookmarkTargets`, which takes one: two would be concurrent operations. A line
- * that isn't two counts is left out.
+ * run alongside a jj command that takes one, where two would be concurrent operations. A line that
+ * isn't two counts is left out.
  */
 export const lineCountsAt = (
   commitIds: readonly string[],
