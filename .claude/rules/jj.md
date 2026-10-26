@@ -38,7 +38,7 @@ All of them run from any directory of the checkout, and `jj help <command>` cove
 | `jj abandon <change>` | Drops a change, rebasing its descendants onto its parent |
 | `jj log -r 'trunk()::'` | Shows the stacks |
 | `jj undo` | Undoes the last operation, whatever it was |
-| `jj gh init` | Sets up a checkout: colocates jj with git, makes GitHub's default branch `trunk()` and sets the `jj gh` alias |
+| `jj gh init` | Sets up a checkout: colocates jj with git, makes GitHub's default branch `trunk()` and sets the `jj gh` alias. The other commands run it again after an upgrade of jj-octo |
 | `jj gh doctor` | Checks what `jj gh init` sets up, and prints each problem with what fixes it, without changing anything |
 | `jj gh log` | Shows the stack's changes, their pull requests and whether each is pushed |
 | `jj gh links` | Prints the stack's pull requests as Markdown links, top first, each marked as a draft, ready, merged or closed, and followed by the lines its change adds and removes, as `+123/-45`. `--copy` also puts them on the clipboard as links that Slack pastes, or in a Claude Code cloud session says how to give them to the user |

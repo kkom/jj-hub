@@ -1,23 +1,30 @@
 import { Command } from "effect/cli";
 
-import { withHelp } from "../command";
+import { asUserError, withHelp } from "../command";
 import { doctorCommand } from "./doctor";
-import { initCommand } from "./init";
+import { initCommand, setUpOnUpgrade } from "./init";
 import { linksCommand } from "./links";
 import { logCommand } from "./log";
 import { mergeCommand } from "./merge";
 import { submitCommand } from "./submit";
 import { syncCommand } from "./sync";
 
+// Runs before a command's handler, so before the layers the handler provides, which need a jj
+// repository that `init` may be about to make.
+const setUpFirst = <const Name extends string, Input, ContextInput, E, R>(
+  command: Command.Command<Name, Input, ContextInput, E, R>,
+) => Command.provideEffectDiscard(command, asUserError(setUpOnUpgrade));
+
 export const jjGhCommand = Command.make("jj gh").pipe(
+  // `doctor` reports the setup without changing it, and `init` is the setup itself.
   Command.withSubcommands([
     doctorCommand,
     initCommand,
-    linksCommand,
-    logCommand,
-    mergeCommand,
-    submitCommand,
-    syncCommand,
+    linksCommand.pipe(setUpFirst),
+    logCommand.pipe(setUpFirst),
+    mergeCommand.pipe(setUpFirst),
+    submitCommand.pipe(setUpFirst),
+    syncCommand.pipe(setUpFirst),
   ]),
   withHelp(
     "Commands for publishing jj changes as GitHub pull requests",
