@@ -10,9 +10,15 @@ import {
 import { GitHub, type GitHubFailed } from "../../clients/github/client";
 import { GitHubFromOrigin } from "../../clients/github/origin";
 import type { ListedPullRequest, PullRequestState } from "../../clients/github/types";
-import type { Jj, JjFailed } from "../../clients/jj";
+import { type Jj, JjFailed } from "../../clients/jj";
 import { asUserError, revisionFlag, withHelp } from "../command";
-import { bookmarkTargets, type NotAStack, stackChanges } from "./stack/changes";
+import {
+  bookmarkTargets,
+  type LineCounts,
+  lineCountsAt,
+  type NotAStack,
+  stackChanges,
+} from "./stack/changes";
 
 export class NoPullRequests extends Data.TaggedError("NoPullRequests")<{
   readonly message: string;
@@ -42,21 +48,29 @@ const COPY_REPORT: Readonly<Record<ClipboardWrite, string>> = {
   ].join(" "),
 };
 
+/** A change's pull request, with the lines the change adds and removes. */
+export interface LinkedPullRequest extends ListedPullRequest, LineCounts {}
+
+const lineCounts = ({ added, removed }: LineCounts): string => `+${added}/-${removed}`;
+
 /** One Markdown line per pull request. */
-export const markdownLinks = (pullRequests: readonly ListedPullRequest[]): string =>
+export const markdownLinks = (pullRequests: readonly LinkedPullRequest[]): string =>
   pullRequests
-    .map(({ number, state, title, url }) => `${EMOJI[state]} [#${number} ${title}](${url})`)
+    .map(
+      (pullRequest) =>
+        `${EMOJI[pullRequest.state]} [#${pullRequest.number} ${pullRequest.title}](${pullRequest.url}) ${lineCounts(pullRequest)}`,
+    )
     .join("\n");
 
 /**
  * The same lines as HTML, which apps such as Slack paste as links. The charset keeps the emoji
  * intact where the app reads the HTML without one.
  */
-export const htmlLinks = (pullRequests: readonly ListedPullRequest[]): string =>
+export const htmlLinks = (pullRequests: readonly LinkedPullRequest[]): string =>
   `<meta charset="utf-8">${pullRequests
     .map(
-      ({ number, state, title, url }) =>
-        `${EMOJI[state]} <a href="${Bun.escapeHTML(url)}">#${number} ${Bun.escapeHTML(title)}</a>`,
+      (pullRequest) =>
+        `${EMOJI[pullRequest.state]} <a href="${Bun.escapeHTML(pullRequest.url)}">#${pullRequest.number} ${Bun.escapeHTML(pullRequest.title)}</a> ${lineCounts(pullRequest)}`,
     )
     .join("<br>")}`;
 
@@ -78,24 +92,36 @@ const pullRequestOf = (
 /** The pull request of each change of the revision's stack, top first. */
 export const stackPullRequests = (
   revision: string,
-): Effect.Effect<readonly ListedPullRequest[], GitHubFailed | JjFailed | NotAStack, GitHub | Jj> =>
+): Effect.Effect<readonly LinkedPullRequest[], GitHubFailed | JjFailed | NotAStack, GitHub | Jj> =>
   Effect.gen(function* () {
     const github = yield* GitHub;
     const stack = yield* stackChanges(revision);
-    const [targets, found] = yield* Effect.all(
+    const [targets, counts, found] = yield* Effect.all(
       [
         bookmarkTargets,
+        lineCountsAt(stack.map(({ commitId }) => commitId)),
         Effect.forEach(stack, ({ bookmark }) => github.pullRequestsFrom(bookmark), {
           concurrency: "unbounded",
         }),
       ],
       { concurrency: "unbounded" },
     );
-    return stack
-      .flatMap(({ bookmark, commitId }, index) =>
-        Option.toArray(pullRequestOf(found[index] ?? [], commitId, targets.get(bookmark)?.origin)),
-      )
-      .toReversed();
+    const linked: LinkedPullRequest[] = [];
+    for (const [index, { bookmark, commitId }] of stack.entries()) {
+      const pullRequest = pullRequestOf(
+        found[index] ?? [],
+        commitId,
+        targets.get(bookmark)?.origin,
+      );
+      const changed = counts.get(commitId);
+      if (Option.isSome(pullRequest)) {
+        if (changed === undefined) {
+          return yield* new JjFailed({ message: `jj printed no line counts for ${commitId}` });
+        }
+        linked.push({ ...pullRequest.value, ...changed });
+      }
+    }
+    return linked.toReversed();
   });
 
 /** Prints the links to the stack's pull requests, and writes them to the clipboard if asked. */
@@ -142,7 +168,7 @@ export const linksCommand = Command.make(
 ).pipe(
   withHelp(
     "Print the stack's pull requests as Markdown links",
-    "Prints one line per pull request, top first: 📝 for a draft, 👀 for one ready for review, 🏁 for a merged one and 🚫 for one closed unmerged, then a Markdown link showing its number and title.",
+    "Prints one line per pull request, top first: 📝 for a draft, 👀 for one ready for review, 🏁 for a merged one and 🚫 for one closed unmerged, then a Markdown link showing its number and title, then the lines its change adds and removes, as `+123/-45`.",
     "A change's pull request is the open one from its branch, or else the newest closed one whose head is the change or the commit pushed for it. A change with no pull request is left out, as is one that `sync` abandoned because its pull request merged. Fails where no change has one.",
     "With `--copy`, also puts the links on the clipboard as HTML, which Slack and other apps paste as links. That runs `osascript` on macOS, which also copies the Markdown as plain text, and `wl-copy` or `xclip` on Linux, which copy the HTML alone.",
     "In a Claude Code cloud session, where `CLAUDE_CODE_REMOTE` is `true`, `--copy` copies nothing. It tells the agent to put the Markdown in its reply, which the Claude app shows as links that paste into Slack.",

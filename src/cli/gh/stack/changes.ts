@@ -39,15 +39,36 @@ export const parseDescription = (json: string): string => {
   return typeof parsed === "string" ? parsed : "";
 };
 
-/** What `jj log` prints for the revset's commits with the template, bottom first. */
-export const readLog = (revset: string, template: string): Effect.Effect<string, JjFailed, Jj> =>
+interface ReadLogOptions {
+  readonly ignoreWorkingCopy?: boolean;
+}
+
+/**
+ * What `jj log` prints for the revset's commits with the template, bottom first.
+ * `ignoreWorkingCopy` skips the snapshot of the working copy, so the read can run alongside another
+ * jj command that takes one.
+ */
+export const readLog = (
+  revset: string,
+  template: string,
+  { ignoreWorkingCopy = false }: ReadLogOptions = {},
+): Effect.Effect<string, JjFailed, Jj> =>
   Effect.gen(function* () {
     const jj = yield* Jj;
-    return yield* jj.read(["log", "--no-graph", "--reversed", "-r", revset, "-T", template]);
+    return yield* jj.read([
+      "log",
+      ...(ignoreWorkingCopy ? ["--ignore-working-copy"] : []),
+      "--no-graph",
+      "--reversed",
+      "-r",
+      revset,
+      "-T",
+      template,
+    ]);
   });
 
-const logLines = (revset: string, template: string) =>
-  readLog(revset, template).pipe(Effect.map(lines));
+const logLines = (revset: string, template: string, options?: ReadLogOptions) =>
+  readLog(revset, template, options).pipe(Effect.map(lines));
 
 /** Each of the revset's changes as its short id and the first line of its description. */
 export const changesIn = (revset: string): Effect.Effect<readonly string[], JjFailed, Jj> =>
@@ -58,6 +79,38 @@ export const commitsAt = (revset: string): Effect.Effect<readonly string[], JjFa
 
 export const changeIdsAt = (revset: string): Effect.Effect<readonly string[], JjFailed, Jj> =>
   logLines(revset, String.raw`change_id ++ "\n"`);
+
+/** The lines a change adds and removes. */
+export interface LineCounts {
+  readonly added: number;
+  readonly removed: number;
+}
+
+/**
+ * The lines each of the commits adds and removes, by commit id. It skips the snapshot, so it can
+ * run alongside a jj command that takes one, where two would be concurrent operations. A line that
+ * isn't two counts is left out.
+ */
+export const lineCountsAt = (
+  commitIds: readonly string[],
+): Effect.Effect<ReadonlyMap<string, LineCounts>, JjFailed, Jj> =>
+  logLines(
+    anyOf(commitIds),
+    String.raw`commit_id ++ "\t" ++ diff.stat().total_added() ++ "\t" ++ diff.stat().total_removed() ++ "\n"`,
+    { ignoreWorkingCopy: true },
+  ).pipe(
+    Effect.map(
+      (logged) =>
+        new Map(
+          logged.flatMap((line) => {
+            const [commitId = "", added = "", removed = ""] = line.split("\t");
+            return /^\d+$/u.test(added) && /^\d+$/u.test(removed)
+              ? [[commitId, { added: Number(added), removed: Number(removed) }] as const]
+              : [];
+          }),
+        ),
+    ),
+  );
 
 /** The names of the local bookmarks on the revset's commits. */
 export const bookmarksAt = (revset: string): Effect.Effect<readonly string[], JjFailed, Jj> =>
