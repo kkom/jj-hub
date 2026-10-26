@@ -51,6 +51,8 @@ describe("jjConfig", () => {
       await read(jjFlag("jj-octo.on")),
       await read(jjFlag("jj-octo.off")),
       await read(jjFlag("jj-octo.none")),
+      await read(jjFlag("jj-octo.none", true)),
+      await read(jjFlag("jj-octo.off", true)),
       await read(jjFlag("jj-octo.word")),
       await read(jjConfig("jj-octo.word")),
       await read(jjConfig("jj-octo.on")),
@@ -58,6 +60,8 @@ describe("jjConfig", () => {
     ]).toStrictEqual([
       { value: true },
       { value: false },
+      { value: false },
+      { value: true },
       { value: false },
       { message: 'jj-octo.word is "true"; set it to true or false' },
       { value: "true" },

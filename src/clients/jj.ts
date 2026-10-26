@@ -129,12 +129,17 @@ export const jjConfig = (key: string): Effect.Effect<string, JjFailed, Jj> =>
     });
   });
 
-/** A true-or-false value in jj's config, false where it has none. Fails on any other value. */
-export const jjFlag = (key: string): Effect.Effect<boolean, JjFailed, Jj> =>
+/**
+ * A true-or-false value in jj's config, or `fallback` where it has none. Fails on any other value.
+ */
+export const jjFlag = (key: string, fallback = false): Effect.Effect<boolean, JjFailed, Jj> =>
   Effect.gen(function* () {
     const value = yield* readJjConfig(key);
-    if (value === undefined || typeof value === "boolean") {
-      return value === true;
+    if (value === undefined) {
+      return fallback;
+    }
+    if (typeof value === "boolean") {
+      return value;
     }
     return yield* new JjFailed({
       message: `${key} is ${JSON.stringify(value)}; set it to true or false`,

@@ -8,9 +8,20 @@ import { pushedStack, type ScratchRepository } from "./scratch-repository";
 export const submitIn = (
   repository: ScratchRepository,
   github: ReturnType<typeof fakeGitHub>,
-  { draft = true, overwriteDescriptions = false, revision = "@" } = {},
+  {
+    draft = true,
+    env = {},
+    overwriteDescriptions = false,
+    revision = "@",
+  }: {
+    readonly draft?: boolean;
+    /** The environment the submit runs in. */
+    readonly env?: Readonly<Record<string, string>>;
+    readonly overwriteDescriptions?: boolean;
+    readonly revision?: string;
+  } = {},
 ): Effect.Effect<void, SubmitFailed> =>
-  submit(revision, { draft, overwriteDescriptions }).pipe(inRepository(repository, github));
+  submit(revision, { draft, overwriteDescriptions }).pipe(inRepository(repository, github, env));
 
 /** The revision's description. */
 export const description = (repository: ScratchRepository, revision: string): string =>

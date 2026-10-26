@@ -12,6 +12,7 @@ import {
 } from "../clients/github/types";
 import type { Jj } from "../clients/jj";
 import type { PrDescriptions } from "../clients/pr-descriptions";
+import { environment } from "./environment";
 import type { ScratchRepository } from "./scratch-repository";
 
 interface FakeGitHubOptions {
@@ -99,8 +100,12 @@ export const openPullRequest = (base: string, number: number, title: string): Pu
   title,
 });
 
-/** Runs a program against the scratch repository and the fake GitHub. */
+/** Runs a program against the scratch repository and the fake GitHub, with `env` as its environment. */
 export const inRepository =
-  (repository: ScratchRepository, github: { readonly layer: Layer.Layer<GitHub> }) =>
+  (
+    repository: ScratchRepository,
+    github: { readonly layer: Layer.Layer<GitHub> },
+    env: Readonly<Record<string, string>> = {},
+  ) =>
   <A, E>(program: Effect.Effect<A, E, Git | GitHub | Jj | PrDescriptions>): Effect.Effect<A, E> =>
-    program.pipe(Effect.provide(Layer.merge(repository.layer, github.layer)));
+    program.pipe(Effect.provide(Layer.mergeAll(repository.layer, github.layer, environment(env))));

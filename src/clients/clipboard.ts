@@ -1,6 +1,8 @@
 import { Config, Context, Data, Effect, Layer, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
+import { claudeCodeCloudSession } from "./claude-code";
+
 export class ClipboardFailed extends Data.TaggedError("ClipboardFailed")<{
   readonly message: string;
 }> {}
@@ -45,7 +47,6 @@ interface ClipboardOptions {
 
 /** The environment variables the clipboard reads, empty where unset. */
 const environment = Config.all({
-  claudeCodeRemote: Config.String("CLAUDE_CODE_REMOTE").pipe(Config.withDefault("")),
   path: Config.String("PATH").pipe(Config.withDefault("")),
   wayland: Config.String("WAYLAND_DISPLAY").pipe(Config.withDefault("")),
 });
@@ -117,8 +118,8 @@ export const clipboardLayer = ({ platform = process.platform }: ClipboardOptions
     Clipboard,
     Effect.gen(function* () {
       // Each variable defaults to empty, and any string is valid, so reading them can't fail.
-      const { claudeCodeRemote, path, wayland } = yield* Effect.orDie(environment);
-      if (claudeCodeRemote === "true") {
+      const { path, wayland } = yield* Effect.orDie(environment);
+      if (yield* claudeCodeCloudSession) {
         return Clipboard.of({ write: () => Effect.succeed("unreachable" as const) });
       }
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
