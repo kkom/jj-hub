@@ -11,9 +11,15 @@ export interface RichText {
   readonly text: string;
 }
 
+/**
+ * What a write did: `unreachable` in a Claude Code cloud session, where the user's clipboard is on
+ * another device, so nothing was copied.
+ */
+export type ClipboardWrite = "copied" | "unreachable";
+
 export class Clipboard extends Context.Service<
   Clipboard,
-  { readonly write: (content: RichText) => Effect.Effect<void, ClipboardFailed> }
+  { readonly write: (content: RichText) => Effect.Effect<ClipboardWrite, ClipboardFailed> }
 >()("jj-octo/Clipboard") {}
 
 // Sets the HTML and the plain text on macOS's pasteboard, where AppleScript's `set the clipboard`
@@ -39,6 +45,7 @@ interface ClipboardOptions {
 
 /** The environment variables the clipboard reads, empty where unset. */
 const environment = Config.all({
+  claudeCodeRemote: Config.String("CLAUDE_CODE_REMOTE").pipe(Config.withDefault("")),
   path: Config.String("PATH").pipe(Config.withDefault("")),
   wayland: Config.String("WAYLAND_DISPLAY").pipe(Config.withDefault("")),
 });
@@ -109,10 +116,13 @@ export const clipboardLayer = ({ platform = process.platform }: ClipboardOptions
   Layer.effect(
     Clipboard,
     Effect.gen(function* () {
-      const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
       // Each variable defaults to empty, and any string is valid, so reading them can't fail.
-      const { path, wayland } = yield* Effect.orDie(environment);
-      return {
+      const { claudeCodeRemote, path, wayland } = yield* Effect.orDie(environment);
+      if (claudeCodeRemote === "true") {
+        return Clipboard.of({ write: () => Effect.succeed("unreachable" as const) });
+      }
+      const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+      return Clipboard.of({
         write: (content) => {
           const commands = commandsFor(content, platform, wayland);
           if (commands.length === 0) {
@@ -138,12 +148,12 @@ export const clipboardLayer = ({ platform = process.platform }: ClipboardOptions
             ),
             Effect.flatMap((code) =>
               code === 0
-                ? Effect.void
+                ? Effect.succeed("copied" as const)
                 : Effect.fail(new ClipboardFailed({ message: `${name} exited with ${code}` })),
             ),
           );
         },
-      };
+      });
     }),
   );
 

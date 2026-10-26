@@ -2,12 +2,13 @@ import { afterAll, describe, expect, it } from "bun:test";
 
 import { Effect, Layer, Option } from "effect";
 
-import { Clipboard, type RichText } from "../../clients/clipboard";
+import { Clipboard, type ClipboardWrite, type RichText } from "../../clients/clipboard";
 import {
   type ListedPullRequest,
   PullRequestNumberSchema,
   type PullRequestState,
 } from "../../clients/github/types";
+import { fakeConsole } from "../../testing/fake-console";
 import { fakeGitHub, inRepository } from "../../testing/fake-github";
 import { removeScratchRepositories, scratchRepository } from "../../testing/scratch-repository";
 import { htmlLinks, links, markdownLinks, NoPullRequests, stackPullRequests } from "./links";
@@ -22,13 +23,14 @@ const pullRequest = (number: number, state: PullRequestState, head: string): Lis
   url: `https://github.com/kkom/jj-octo/pull/${number}`,
 });
 
-// A clipboard that keeps what is written to it.
-const fakeClipboard = () => {
+// A clipboard that keeps what is written to it, and reports the given outcome.
+const fakeClipboard = (outcome: ClipboardWrite = "copied") => {
   const copied: RichText[] = [];
   const layer = Layer.succeed(Clipboard, {
     write: (content) =>
       Effect.sync(() => {
         copied.push(content);
+        return outcome;
       }),
   });
   return { copied, layer };
@@ -97,24 +99,39 @@ describe("markdownLinks and htmlLinks", () => {
 });
 
 describe("links", () => {
-  it("copies the links as HTML and Markdown when asked", async () => {
-    const repository = scratchRepository();
-    repository.stack("a");
-    const listed = pullRequest(1, "draft", "anything");
-    const github = fakeGitHub({}, Option.none(), {
-      pullRequestsFrom: (branch) => (branch === "a" ? [listed] : []),
-    });
-    const clipboard = fakeClipboard();
-    await Effect.runPromise(
-      links({ copy: true, revision: "@" }).pipe(
-        Effect.provide(clipboard.layer),
-        inRepository(repository, github),
-      ),
-    );
-    expect(clipboard.copied).toStrictEqual([
-      { html: htmlLinks([listed]), text: markdownLinks([listed]) },
-    ]);
-  });
+  it.each([
+    ["copied", "copied the links to the clipboard"],
+    [
+      "unreachable",
+      "This Claude Code cloud session can't reach the user's clipboard. To give the user the links, put the Markdown links this command printed in your reply, outside a code block. The Claude app shows them as links, which paste into Slack as links.",
+    ],
+  ] as const)(
+    "writes the links to the clipboard as HTML and Markdown when asked, and reports %s",
+    async (outcome, report) => {
+      const repository = scratchRepository();
+      repository.stack("a");
+      const listed = pullRequest(1, "draft", "anything");
+      const github = fakeGitHub({}, Option.none(), {
+        pullRequestsFrom: (branch) => (branch === "a" ? [listed] : []),
+      });
+      const clipboard = fakeClipboard(outcome);
+      const console = fakeConsole();
+      await Effect.runPromise(
+        links({ copy: true, revision: "@" }).pipe(
+          Effect.provide(clipboard.layer),
+          inRepository(repository, github),
+          console.provide,
+        ),
+      );
+      expect({ copied: clipboard.copied, printed: console.printed }).toStrictEqual({
+        copied: [{ html: htmlLinks([listed]), text: markdownLinks([listed]) }],
+        printed: [
+          { stream: "stdout", text: markdownLinks([listed]) },
+          { stream: "stderr", text: report },
+        ],
+      });
+    },
+  );
 
   it("fails, copying nothing, where no change has a pull request", async () => {
     const repository = scratchRepository();
@@ -135,16 +152,20 @@ describe("links", () => {
   it("copies nothing unless asked", async () => {
     const repository = scratchRepository();
     repository.stack("a");
-    const github = fakeGitHub({}, Option.none(), {
-      pullRequestsFrom: () => [pullRequest(1, "draft", "anything")],
-    });
+    const listed = pullRequest(1, "draft", "anything");
+    const github = fakeGitHub({}, Option.none(), { pullRequestsFrom: () => [listed] });
     const clipboard = fakeClipboard();
+    const console = fakeConsole();
     await Effect.runPromise(
       links({ copy: false, revision: "@" }).pipe(
         Effect.provide(clipboard.layer),
         inRepository(repository, github),
+        console.provide,
       ),
     );
-    expect(clipboard.copied).toStrictEqual([]);
+    expect({ copied: clipboard.copied, printed: console.printed }).toStrictEqual({
+      copied: [],
+      printed: [{ stream: "stdout", text: markdownLinks([listed]) }],
+    });
   });
 });

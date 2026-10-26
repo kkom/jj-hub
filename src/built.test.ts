@@ -27,12 +27,13 @@ const inherited = Object.fromEntries(
   Object.entries(process.env).filter(([key]) => !proxySettings.has(key.toLowerCase())),
 );
 
+interface RunOptions {
+  readonly cwd: string;
+  readonly env: Readonly<Record<string, string>>;
+}
+
 // Asynchronous, so the proxy in this process can answer while the file runs.
-const run = async (
-  command: readonly string[],
-  args: readonly string[],
-  options: { readonly cwd: string; readonly env: Readonly<Record<string, string>> },
-) => {
+const output = async (command: readonly string[], args: readonly string[], options: RunOptions) => {
   const child = Bun.spawn([...command, ...args], {
     cwd: options.cwd,
     env: { ...inherited, ...options.env },
@@ -46,6 +47,11 @@ const run = async (
   if (exitCode !== 0) {
     throw new Error(`jj-octo ${args.join(" ")} failed:\n${stderr}`);
   }
+  return { stderr, stdout };
+};
+
+const run = async (command: readonly string[], args: readonly string[], options: RunOptions) => {
+  const { stdout } = await output(command, args, options);
   return stdout;
 };
 
@@ -129,6 +135,27 @@ describe.each(builds)("$name", ({ command }) => {
         "GET api.github.com/repos/owner/name/pulls?state=all&head=owner:a&per_page=100",
       ],
       result: "👀 [#7 Add a](https://github.com/owner/name/pull/7)\n",
+    });
+  });
+
+  it("tells the agent to reply with the links, with --copy in a Claude Code cloud session", async () => {
+    const received = await throughProxy("api.github.com", listOfA, (proxy) => {
+      const { cwd, env } = checkoutOfA();
+      return output(command, ["links", "--copy"], {
+        cwd,
+        env: {
+          ...env,
+          CLAUDE_CODE_REMOTE: "true",
+          GH_TOKEN: "test-token",
+          HTTPS_PROXY: proxy.url,
+          NODE_EXTRA_CA_CERTS: proxy.caFile,
+        },
+      });
+    });
+    expect(received.result).toStrictEqual({
+      stderr:
+        "This Claude Code cloud session can't reach the user's clipboard. To give the user the links, put the Markdown links this command printed in your reply, outside a code block. The Claude app shows them as links, which paste into Slack as links.\n",
+      stdout: "👀 [#7 Add a](https://github.com/owner/name/pull/7)\n",
     });
   });
 
