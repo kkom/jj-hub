@@ -75,3 +75,5 @@ bun run fix      # format and lint fixes
 ```
 
 To release, run `bun run release:patch`, `release:minor` or `release:major` in a pull request, which raises `version` in `package.json`. Once it is merged and the checks pass on `main`, the same workflow publishes that version to npm, and as a GitHub release with the executables.
+
+The workflow publishes the version from the last commit of the push. So merge a release pull request with nothing above it: in a stack, run `jj gh merge -r` on the release change, then merge the pull requests above it. Until the release is merged, the `CI` check fails on each pull request above it. `main` requires `CI` to pass, so GitHub doesn't merge those pull requests with the release.
