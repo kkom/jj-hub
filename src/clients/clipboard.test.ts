@@ -60,48 +60,69 @@ const standIn = (command: string, exitCode = 0) => {
 describe("clipboardLayer", () => {
   it("sets the HTML and the text with osascript on macOS", async () => {
     const osascript = standIn("osascript");
-    await Effect.runPromise(writeWith(layerFor("darwin", { PATH: osascript.PATH })));
-    expect(osascript.recorded()).toStrictEqual({
-      alive: true,
-      args: ["-l", "JavaScript", "-e", MACOS_SCRIPT, content.html, content.text, ""].join("\n"),
-      stdin: "",
+    const reported = await Effect.runPromise(
+      writeWith(layerFor("darwin", { PATH: osascript.PATH })),
+    );
+    expect({ recorded: osascript.recorded(), reported }).toStrictEqual({
+      recorded: {
+        alive: true,
+        args: ["-l", "JavaScript", "-e", MACOS_SCRIPT, content.html, content.text, ""].join("\n"),
+        stdin: "",
+      },
+      reported: "copied",
     });
   });
 
   it("pipes the HTML to wl-copy under Wayland, leaving its process running", async () => {
     const wlCopy = standIn("wl-copy");
-    await Effect.runPromise(
+    const reported = await Effect.runPromise(
       writeWith(layerFor("linux", { PATH: wlCopy.PATH, WAYLAND_DISPLAY: "wayland-0" })),
     );
-    expect(wlCopy.recorded()).toStrictEqual({
-      alive: true,
-      args: "--type\ntext/html\n",
-      stdin: content.html,
+    expect({ recorded: wlCopy.recorded(), reported }).toStrictEqual({
+      recorded: {
+        alive: true,
+        args: "--type\ntext/html\n",
+        stdin: content.html,
+      },
+      reported: "copied",
     });
   });
 
   it("pipes the HTML to xclip under X, leaving its process running", async () => {
     const xclip = standIn("xclip");
-    await Effect.runPromise(
+    const reported = await Effect.runPromise(
       writeWith(layerFor("linux", { PATH: xclip.PATH, WAYLAND_DISPLAY: "" })),
     );
-    expect(xclip.recorded()).toStrictEqual({
-      alive: true,
-      args: "-selection\nclipboard\n-t\ntext/html\n",
-      stdin: content.html,
+    expect({ recorded: xclip.recorded(), reported }).toStrictEqual({
+      recorded: {
+        alive: true,
+        args: "-selection\nclipboard\n-t\ntext/html\n",
+        stdin: content.html,
+      },
+      reported: "copied",
     });
   });
 
   it("falls back to xclip under Wayland where wl-copy isn't installed", async () => {
     const xclip = standIn("xclip");
-    await Effect.runPromise(
+    const reported = await Effect.runPromise(
       writeWith(layerFor("linux", { PATH: xclip.PATH, WAYLAND_DISPLAY: "wayland-0" })),
     );
-    expect(xclip.recorded()).toStrictEqual({
-      alive: true,
-      args: "-selection\nclipboard\n-t\ntext/html\n",
-      stdin: content.html,
+    expect({ recorded: xclip.recorded(), reported }).toStrictEqual({
+      recorded: {
+        alive: true,
+        args: "-selection\nclipboard\n-t\ntext/html\n",
+        stdin: content.html,
+      },
+      reported: "copied",
     });
+  });
+
+  // On a platform it has no command for, reporting rather than failing shows that nothing ran.
+  it("runs no command in a Claude Code cloud session, which can't reach the clipboard", async () => {
+    expect(
+      await Effect.runPromise(writeWith(layerFor("win32", { CLAUDE_CODE_REMOTE: "true" }))),
+    ).toBe("unreachable");
   });
 
   it("fails naming the command where it exits non-zero", async () => {
