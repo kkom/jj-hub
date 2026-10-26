@@ -3,7 +3,11 @@ import { appendFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import manifest from "../package.json" with { type: "json" };
-import { type InterceptedRequest, throughProxy } from "./testing/intercepting-proxy";
+import {
+  type InterceptedRequest,
+  type InterceptingProxy,
+  throughProxy,
+} from "./testing/intercepting-proxy";
 import {
   isolatedEnv,
   removeScratchRepositories,
@@ -86,6 +90,13 @@ const listOfA = ({ path: requestPath }: InterceptedRequest) =>
       ]
     : [];
 
+// The environment that sends jj-octo's requests through the proxy, with a token it can pass on.
+const proxyEnv = ({ caFile, url }: InterceptingProxy) => ({
+  GH_TOKEN: "test-token",
+  HTTPS_PROXY: url,
+  NODE_EXTRA_CA_CERTS: caFile,
+});
+
 // A repository with change `a` on `main`, whose `origin` is a GitHub repository, and the
 // environment that runs the file in it with its own configuration.
 const checkoutOfA = () => {
@@ -123,9 +134,7 @@ describe.each(builds)("$name", ({ command }) => {
         cwd,
         env: {
           ...env,
-          GH_TOKEN: "test-token",
-          HTTPS_PROXY: proxy.url,
-          NODE_EXTRA_CA_CERTS: proxy.caFile,
+          ...proxyEnv(proxy),
         },
       });
     });
@@ -146,9 +155,7 @@ describe.each(builds)("$name", ({ command }) => {
         env: {
           ...env,
           CLAUDE_CODE_REMOTE: "true",
-          GH_TOKEN: "test-token",
-          HTTPS_PROXY: proxy.url,
-          NODE_EXTRA_CA_CERTS: proxy.caFile,
+          ...proxyEnv(proxy),
         },
       });
     });
@@ -166,9 +173,7 @@ describe.each(builds)("$name", ({ command }) => {
         cwd,
         env: {
           ...env,
-          GH_TOKEN: "test-token",
-          HTTPS_PROXY: proxy.url,
-          NODE_EXTRA_CA_CERTS: proxy.caFile,
+          ...proxyEnv(proxy),
         },
       });
     });
@@ -187,9 +192,7 @@ describe.each(builds)("$name", ({ command }) => {
         cwd,
         env: {
           ...env,
-          GH_TOKEN: "test-token",
-          HTTPS_PROXY: proxy.url,
-          NODE_EXTRA_CA_CERTS: proxy.caFile,
+          ...proxyEnv(proxy),
         },
       });
     });
@@ -211,9 +214,7 @@ describe.each(builds)("$name", ({ command }) => {
         cwd,
         env: {
           ...env,
-          GH_TOKEN: "test-token",
-          HTTPS_PROXY: proxy.url,
-          NODE_EXTRA_CA_CERTS: proxy.caFile,
+          ...proxyEnv(proxy),
         },
       });
     });
