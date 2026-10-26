@@ -187,6 +187,27 @@ describe("submit", () => {
         expect(github.calls).toEqual(["describe #1 as a better"]);
       });
 
+      it("leaves the change alone by default in a Claude Code cloud session", async () => {
+        const repository = pushed();
+        const github = githubWith("a", `first\n\nsecond${footer}`);
+        await Effect.runPromise(
+          submitIn(repository, github, { env: { CLAUDE_CODE_REMOTE: "true" } }),
+        );
+        expect(description(repository, "a")).toBe("a\n\nfirst\n\nsecond");
+        expect(github.calls).toEqual([]);
+      });
+
+      it("takes the footer into the change in a cloud session when told not to ignore it", async () => {
+        const repository = pushed();
+        repository.jj("config", "set", "--repo", "jj-octo.ignore-claude-code-footer", "false");
+        const github = githubWith("a", `first\n\nsecond${footer}`);
+        await Effect.runPromise(
+          submitIn(repository, github, { env: { CLAUDE_CODE_REMOTE: "true" } }),
+        );
+        expect(description(repository, "a")).toBe(`a\n\nfirst\n\nsecond${footer}`);
+        expect(github.calls).toEqual([]);
+      });
+
       it("fails for a value of the setting other than true or false", async () => {
         const repository = pushed();
         repository.jj("config", "set", "--repo", "jj-octo.ignore-claude-code-footer", "yes");

@@ -1,5 +1,6 @@
 import { Console, Data, Effect, Match, Option } from "effect";
 
+import { claudeCodeCloudSession } from "../../../clients/claude-code";
 import { Git, type GitFailed } from "../../../clients/git";
 import type { PullRequest } from "../../../clients/github/types";
 import { Jj, type JjFailed, jjFlag } from "../../../clients/jj";
@@ -39,10 +40,13 @@ export const ignoreClaudeCodeFooterKey = "jj-octo.ignore-claude-code-footer";
 /**
  * Reads `jj-octo.ignore-claude-code-footer` from the jj config. `true` compares descriptions
  * without the footer that the GitHub proxy of a Claude Code cloud session appends to each pull
- * request body it creates or edits. `false`, the default, compares them as they are.
+ * request body it creates or edits. `false` compares them as they are. Where it's unset, it's
+ * `true` in a Claude Code cloud session and `false` elsewhere.
  */
-export const ignoresClaudeCodeFooter: Effect.Effect<boolean, JjFailed, Jj> =
-  jjFlag(ignoreClaudeCodeFooterKey);
+export const ignoresClaudeCodeFooter: Effect.Effect<boolean, JjFailed, Jj> = Effect.flatMap(
+  claudeCodeCloudSession,
+  (cloudSession) => jjFlag(ignoreClaudeCodeFooterKey, cloudSession),
+);
 
 /** The description of each commit, by commit id, read in one command. */
 export const descriptionsOf = (
