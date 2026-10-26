@@ -1,10 +1,11 @@
 import { afterAll, describe, expect, it } from "bun:test";
-import { chmodSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import { BunServices } from "@effect/platform-bun";
 import { Effect, Layer } from "effect";
 
+import { environment } from "../testing/environment";
 import { removeScratchRepositories, scratchDirectory } from "../testing/scratch-repository";
 import { Clipboard, ClipboardFailed, clipboardLayer, MACOS_SCRIPT } from "./clipboard";
 
@@ -19,7 +20,7 @@ const writeWith = (layer: Layer.Layer<Clipboard>) =>
   Effect.flatMap(Clipboard, (clipboard) => clipboard.write(content)).pipe(Effect.provide(layer));
 
 const layerFor = (platform: string, env: Readonly<Record<string, string>> = {}) =>
-  clipboardLayer({ env, platform }).pipe(Layer.provide(BunServices.layer));
+  clipboardLayer({ platform }).pipe(Layer.provide([BunServices.layer, environment(env)]));
 
 /**
  * A directory holding a stand-in for the command, which records its arguments and stdin, and
@@ -40,10 +41,6 @@ const standIn = (command: string, exitCode = 0) => {
     ].join("\n"),
   );
   chmodSync(script, 0o755);
-  // The PATH holds only what the stand-in runs, so a real clipboard command can't run instead.
-  for (const tool of ["cat", "sleep"]) {
-    symlinkSync(Bun.which(tool) ?? tool, path.join(directory, tool));
-  }
   const read = (file: string) => readFileSync(path.join(directory, file), "utf8");
   const held = () => Number(read("held").trim());
   return {

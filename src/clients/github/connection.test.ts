@@ -3,8 +3,9 @@ import { writeFileSync } from "node:fs";
 import path from "node:path";
 
 import { BunServices } from "@effect/platform-bun";
-import { ConfigProvider, Effect, Layer, Option, Redacted } from "effect";
+import { Effect, Layer, Option, Redacted } from "effect";
 
+import { environment } from "../../testing/environment";
 import { gitClone } from "../../testing/git-clone";
 import {
   removeScratchRepositories,
@@ -19,11 +20,7 @@ afterAll(removeScratchRepositories);
 const checkout = (env: Readonly<Record<string, string>> = {}) => {
   const clone = gitClone(scratchRepository());
   clone.jj("git", "init", "--colocate");
-  const layer = Layer.mergeAll(
-    clone.layer,
-    BunServices.layer,
-    ConfigProvider.layer(ConfigProvider.fromEnv({ env: { ...env } })),
-  );
+  const layer = Layer.mergeAll(clone.layer, BunServices.layer, environment(env));
   const resolve = () =>
     Effect.runPromise(
       connection.pipe(
