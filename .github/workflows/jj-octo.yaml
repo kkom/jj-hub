@@ -10,7 +10,7 @@ env:
   # The npm that publishes. Publishing with the workflow's identity needs npm 11.5.1 or later,
   # newer than the runner's own npm.
   # renovate: datasource=npm depName=npm
-  NPM_VERSION: 11.21.1
+  NPM_VERSION: 12.2.1
 
 jobs:
   ci:
