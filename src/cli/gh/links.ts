@@ -10,15 +10,15 @@ import {
 import { GitHub, type GitHubFailed } from "../../clients/github/client";
 import { GitHubFromOrigin } from "../../clients/github/origin";
 import type { ListedPullRequest, PullRequestState } from "../../clients/github/types";
-import type { Jj, JjFailed } from "../../clients/jj";
+import { type Jj, JjFailed } from "../../clients/jj";
 import { asUserError, revisionFlag, withHelp } from "../command";
 import {
+  anyOf,
   bookmarkTargets,
   lines,
   type NotAStack,
   readLog,
   stackChanges,
-  stackRevset,
 } from "./stack/changes";
 
 export class NoPullRequests extends Data.TaggedError("NoPullRequests")<{
@@ -49,20 +49,23 @@ const COPY_REPORT: Readonly<Record<ClipboardWrite, string>> = {
   ].join(" "),
 };
 
-/** A change's pull request, with the lines the change adds and removes. */
-export interface LinkedPullRequest extends ListedPullRequest {
+/** The lines a change adds and removes. */
+interface LineCounts {
   readonly added: number;
   readonly removed: number;
 }
 
-const lineCounts = ({ added, removed }: LinkedPullRequest): string => `+${added}/-${removed}`;
+/** A change's pull request, with the lines the change adds and removes. */
+export interface LinkedPullRequest extends ListedPullRequest, LineCounts {}
+
+const lineCounts = ({ added, removed }: LineCounts): string => `+${added}/-${removed}`;
 
 /** One Markdown line per pull request. */
 export const markdownLinks = (pullRequests: readonly LinkedPullRequest[]): string =>
   pullRequests
     .map(
-      (pullRequest) =>
-        `${EMOJI[pullRequest.state]} [#${pullRequest.number} ${pullRequest.title}](${pullRequest.url}) ${lineCounts(pullRequest)}`,
+      ({ number, state, title, url, ...counts }) =>
+        `${EMOJI[state]} [#${number} ${title}](${url}) ${lineCounts(counts)}`,
     )
     .join("\n");
 
@@ -73,8 +76,8 @@ export const markdownLinks = (pullRequests: readonly LinkedPullRequest[]): strin
 export const htmlLinks = (pullRequests: readonly LinkedPullRequest[]): string =>
   `<meta charset="utf-8">${pullRequests
     .map(
-      (pullRequest) =>
-        `${EMOJI[pullRequest.state]} <a href="${Bun.escapeHTML(pullRequest.url)}">#${pullRequest.number} ${Bun.escapeHTML(pullRequest.title)}</a> ${lineCounts(pullRequest)}`,
+      ({ number, state, title, url, ...counts }) =>
+        `${EMOJI[state]} <a href="${Bun.escapeHTML(url)}">#${number} ${Bun.escapeHTML(title)}</a> ${lineCounts(counts)}`,
     )
     .join("<br>")}`;
 
@@ -93,21 +96,35 @@ const pullRequestOf = (
       pullRequests.find(({ head }) => head === commitId || head === pushed),
   );
 
-// The lines each change adds and removes, keyed by its commit.
 const LINE_COUNTS = String.raw`commit_id ++ "\t" ++ diff.stat().total_added() ++ "\t" ++ diff.stat().total_removed() ++ "\n"`;
 
-const lineCountsIn = (revset: string) =>
-  readLog(revset, LINE_COUNTS).pipe(
-    Effect.map(
-      (logged) =>
-        new Map(
-          lines(logged).map((line) => {
-            const [commitId = "", added = "0", removed = "0"] = line.split("\t");
-            return [commitId, { added: Number(added), removed: Number(removed) }] as const;
-          }),
-        ),
-    ),
-  );
+/** The lines each of the commits adds and removes, in the same order. */
+const lineCountsOf = (
+  commitIds: readonly string[],
+): Effect.Effect<readonly LineCounts[], JjFailed, Jj> =>
+  Effect.gen(function* () {
+    const logged = yield* readLog(anyOf(commitIds), LINE_COUNTS, { ignoreWorkingCopy: true });
+    const counts = new Map<string, LineCounts>();
+    for (const line of lines(logged)) {
+      const parsed = /^(?<commitId>\w+)\t(?<added>\d+)\t(?<removed>\d+)$/u.exec(line)?.groups;
+      if (parsed === undefined) {
+        return yield* new JjFailed({
+          message: `jj printed ${JSON.stringify(line)} for the lines a commit adds and removes`,
+        });
+      }
+      counts.set(parsed["commitId"] ?? "", {
+        added: Number(parsed["added"]),
+        removed: Number(parsed["removed"]),
+      });
+    }
+    return yield* Effect.forEach(commitIds, (commitId) =>
+      Option.match(Option.fromNullishOr(counts.get(commitId)), {
+        onNone: () =>
+          Effect.fail(new JjFailed({ message: `jj printed no line counts for ${commitId}` })),
+        onSome: Effect.succeed,
+      }),
+    );
+  });
 
 /** The pull request of each change of the revision's stack, top first. */
 export const stackPullRequests = (
@@ -119,7 +136,7 @@ export const stackPullRequests = (
     const [targets, counts, found] = yield* Effect.all(
       [
         bookmarkTargets,
-        lineCountsIn(stackRevset(revision)),
+        lineCountsOf(stack.map(({ commitId }) => commitId)),
         Effect.forEach(stack, ({ bookmark }) => github.pullRequestsFrom(bookmark), {
           concurrency: "unbounded",
         }),
@@ -129,13 +146,11 @@ export const stackPullRequests = (
     return stack
       .flatMap(({ bookmark, commitId }, index) =>
         Option.toArray(
-          pullRequestOf(found[index] ?? [], commitId, targets.get(bookmark)?.origin).pipe(
-            Option.map((pullRequest): LinkedPullRequest => ({
-              ...pullRequest,
-              ...(counts.get(commitId) ?? { added: 0, removed: 0 }),
-            })),
-          ),
-        ),
+          pullRequestOf(found[index] ?? [], commitId, targets.get(bookmark)?.origin),
+        ).map((pullRequest): LinkedPullRequest => ({
+          ...pullRequest,
+          ...(counts[index] ?? { added: 0, removed: 0 }),
+        })),
       )
       .toReversed();
   });

@@ -39,11 +39,29 @@ export const parseDescription = (json: string): string => {
   return typeof parsed === "string" ? parsed : "";
 };
 
-/** What `jj log` prints for the revset's commits with the template, bottom first. */
-export const readLog = (revset: string, template: string): Effect.Effect<string, JjFailed, Jj> =>
+/**
+ * What `jj log` prints for the revset's commits with the template, bottom first.
+ * `ignoreWorkingCopy` skips the snapshot, for reading commits an earlier read returned: a snapshot
+ * gives the working copy's change a new commit where a file changed since.
+ */
+export const readLog = (
+  revset: string,
+  template: string,
+  { ignoreWorkingCopy = false }: { readonly ignoreWorkingCopy?: boolean } = {},
+): Effect.Effect<string, JjFailed, Jj> =>
   Effect.gen(function* () {
     const jj = yield* Jj;
-    return yield* jj.read(["log", "--no-graph", "--reversed", "-r", revset, "-T", template]);
+    const snapshot = ignoreWorkingCopy ? ["--ignore-working-copy"] : [];
+    return yield* jj.read([
+      "log",
+      ...snapshot,
+      "--no-graph",
+      "--reversed",
+      "-r",
+      revset,
+      "-T",
+      template,
+    ]);
   });
 
 const logLines = (revset: string, template: string) =>

@@ -141,17 +141,9 @@ describe("links", () => {
         ),
       );
       expect({ copied: clipboard.copied, printed: console.printed }).toStrictEqual({
-        copied: [
-          {
-            html: '<meta charset="utf-8">📝 <a href="https://github.com/kkom/jj-octo/pull/1">#1 Pull request 1</a> +1/-0',
-            text: "📝 [#1 Pull request 1](https://github.com/kkom/jj-octo/pull/1) +1/-0",
-          },
-        ],
+        copied: [{ html: htmlLinks([linked(listed)]), text: markdownLinks([linked(listed)]) }],
         printed: [
-          {
-            stream: "stdout",
-            text: "📝 [#1 Pull request 1](https://github.com/kkom/jj-octo/pull/1) +1/-0",
-          },
+          { stream: "stdout", text: markdownLinks([linked(listed)]) },
           { stream: "stderr", text: report },
         ],
       });
@@ -190,12 +182,7 @@ describe("links", () => {
     );
     expect({ copied: clipboard.copied, printed: console.printed }).toStrictEqual({
       copied: [],
-      printed: [
-        {
-          stream: "stdout",
-          text: "📝 [#1 Pull request 1](https://github.com/kkom/jj-octo/pull/1) +1/-0",
-        },
-      ],
+      printed: [{ stream: "stdout", text: markdownLinks([linked(listed)]) }],
     });
   });
 });
