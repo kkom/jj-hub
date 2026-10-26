@@ -64,8 +64,8 @@ const lineCounts = ({ added, removed }: LineCounts): string => `+${added}/-${rem
 export const markdownLinks = (pullRequests: readonly LinkedPullRequest[]): string =>
   pullRequests
     .map(
-      ({ number, state, title, url, ...counts }) =>
-        `${EMOJI[state]} [#${number} ${title}](${url}) ${lineCounts(counts)}`,
+      ({ added, number, removed, state, title, url }) =>
+        `${EMOJI[state]} [#${number} ${title}](${url}) ${lineCounts({ added, removed })}`,
     )
     .join("\n");
 
@@ -76,8 +76,8 @@ export const markdownLinks = (pullRequests: readonly LinkedPullRequest[]): strin
 export const htmlLinks = (pullRequests: readonly LinkedPullRequest[]): string =>
   `<meta charset="utf-8">${pullRequests
     .map(
-      ({ number, state, title, url, ...counts }) =>
-        `${EMOJI[state]} <a href="${Bun.escapeHTML(url)}">#${number} ${Bun.escapeHTML(title)}</a> ${lineCounts(counts)}`,
+      ({ added, number, removed, state, title, url }) =>
+        `${EMOJI[state]} <a href="${Bun.escapeHTML(url)}">#${number} ${Bun.escapeHTML(title)}</a> ${lineCounts({ added, removed })}`,
     )
     .join("<br>")}`;
 
@@ -109,16 +109,14 @@ const lineCountsOf = (
     const logged = yield* readLog(anyOf(commitIds), LINE_COUNTS, { ignoreWorkingCopy: true });
     const counts = new Map<string, LineCounts>();
     for (const line of lines(logged)) {
-      const parsed = /^(?<commitId>\w+)\t(?<added>\d+)\t(?<removed>\d+)$/u.exec(line)?.groups;
-      if (parsed === undefined) {
+      const { added, commitId, removed } =
+        /^(?<commitId>\w+)\t(?<added>\d+)\t(?<removed>\d+)$/u.exec(line)?.groups ?? {};
+      if (added === undefined || commitId === undefined || removed === undefined) {
         return yield* new JjFailed({
           message: `jj printed ${JSON.stringify(line)} for the lines a commit adds and removes`,
         });
       }
-      counts.set(parsed["commitId"] ?? "", {
-        added: Number(parsed["added"]),
-        removed: Number(parsed["removed"]),
-      });
+      counts.set(commitId, { added: Number(added), removed: Number(removed) });
     }
     return counts;
   });
