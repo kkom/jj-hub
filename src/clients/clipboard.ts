@@ -1,4 +1,4 @@
-import { Context, Data, Effect, Layer, Stream } from "effect";
+import { Config, Context, Data, Effect, Layer, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 export class ClipboardFailed extends Data.TaggedError("ClipboardFailed")<{
@@ -35,13 +35,19 @@ function run([html, text]) {
 interface ClipboardOptions {
   /** `process.platform` by default. */
   readonly platform?: string;
-  /** Added to the environment the clipboard command inherits. */
-  readonly env?: Readonly<Record<string, string>>;
 }
 
+/** The environment variables the clipboard reads, empty where unset. */
+const environment = Config.all({
+  path: Config.String("PATH").pipe(Config.withDefault("")),
+  wayland: Config.String("WAYLAND_DISPLAY").pipe(Config.withDefault("")),
+});
+
 interface ClipboardCommand {
-  readonly command: ChildProcess.Command;
   readonly name: string;
+  readonly args: readonly string[];
+  /** Whether the command reads the HTML from stdin, or takes the content as arguments. */
+  readonly input: "arguments" | "stdin";
 }
 
 /**
@@ -52,49 +58,63 @@ interface ClipboardCommand {
 const commandsFor = (
   { html, text }: RichText,
   platform: string,
-  env: Readonly<Record<string, string>>,
+  wayland: string,
 ): readonly ClipboardCommand[] => {
-  // The commands that read the HTML from stdin leave a process behind that holds the clipboard.
-  // It would die with a detached process group, and keeps any stdout or stderr it inherits open,
-  // which would block a caller reading them. So their output is dropped, and osascript's isn't.
-  const make = (
-    name: string,
-    args: readonly string[],
-    input: "arguments" | "stdin",
-  ): ClipboardCommand => ({
-    command: ChildProcess.make(name, args, {
-      detached: false,
-      env,
-      extendEnv: true,
-      stdout: "ignore",
-      ...(input === "stdin"
-        ? { stderr: "ignore", stdin: Stream.make(html).pipe(Stream.encodeText) }
-        : { stderr: "inherit", stdin: "ignore" }),
-    }),
-    name,
-  });
   if (platform === "darwin") {
-    return [make("osascript", ["-l", "JavaScript", "-e", MACOS_SCRIPT, html, text], "arguments")];
+    return [
+      {
+        args: ["-l", "JavaScript", "-e", MACOS_SCRIPT, html, text],
+        input: "arguments",
+        name: "osascript",
+      },
+    ];
   }
   if (platform !== "linux") {
     return [];
   }
-  const xclip = make("xclip", ["-selection", "clipboard", "-t", "text/html"], "stdin");
-  const wayland = env["WAYLAND_DISPLAY"] ?? process.env["WAYLAND_DISPLAY"] ?? "";
-  return wayland === "" ? [xclip] : [make("wl-copy", ["--type", "text/html"], "stdin"), xclip];
+  const xclip: ClipboardCommand = {
+    args: ["-selection", "clipboard", "-t", "text/html"],
+    input: "stdin",
+    name: "xclip",
+  };
+  return wayland === ""
+    ? [xclip]
+    : [{ args: ["--type", "text/html"], input: "stdin", name: "wl-copy" }, xclip];
 };
 
-export const clipboardLayer = ({
-  env = {},
-  platform = process.platform,
-}: ClipboardOptions = {}): Layer.Layer<Clipboard, never, ChildProcessSpawner.ChildProcessSpawner> =>
+/**
+ * Runs the executable found for the command. The commands that read the HTML from stdin leave a
+ * process behind that holds the clipboard. It would die with a detached process group, and keeps
+ * any stdout or stderr it inherits open, which would block a caller reading them. So their output
+ * is dropped, and osascript's isn't.
+ */
+const childProcess = (
+  { args, input }: ClipboardCommand,
+  executable: string,
+  html: string,
+): ChildProcess.Command =>
+  ChildProcess.make(executable, args, {
+    detached: false,
+    stdout: "ignore",
+    ...(input === "stdin"
+      ? { stderr: "ignore", stdin: Stream.make(html).pipe(Stream.encodeText) }
+      : { stderr: "inherit", stdin: "ignore" }),
+  });
+
+export const clipboardLayer = ({ platform = process.platform }: ClipboardOptions = {}): Layer.Layer<
+  Clipboard,
+  never,
+  ChildProcessSpawner.ChildProcessSpawner
+> =>
   Layer.effect(
     Clipboard,
     Effect.gen(function* () {
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+      // Each variable defaults to empty, and any string is valid, so reading them can't fail.
+      const { path, wayland } = yield* Effect.orDie(environment);
       return {
         write: (content) => {
-          const commands = commandsFor(content, platform, env);
+          const commands = commandsFor(content, platform, wayland);
           if (commands.length === 0) {
             return Effect.fail(
               new ClipboardFailed({
@@ -102,14 +122,17 @@ export const clipboardLayer = ({
               }),
             );
           }
-          const PATH = env["PATH"] ?? process.env["PATH"] ?? "";
-          const installed = commands.find(({ name }) => Bun.which(name, { PATH }) !== null);
+          const [installed] = commands.flatMap((command) => {
+            const executable = Bun.which(command.name, { PATH: path });
+            return executable === null ? [] : [{ command, executable }];
+          });
           if (installed === undefined) {
             const names = commands.map(({ name }) => name).join(" or ");
             return Effect.fail(new ClipboardFailed({ message: `couldn't find ${names}` }));
           }
-          const { command, name } = installed;
-          return spawner.exitCode(command).pipe(
+          const { command, executable } = installed;
+          const { name } = command;
+          return spawner.exitCode(childProcess(command, executable, content.html)).pipe(
             Effect.catchTag("PlatformError", (error) =>
               Effect.fail(new ClipboardFailed({ message: `${name} failed: ${error.message}` })),
             ),
