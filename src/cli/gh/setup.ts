@@ -55,6 +55,12 @@ const checkout = Effect.gen(function* () {
   return { isColocated, isWorktree: gitDirectory !== commonDirectory, root };
 });
 
+/** The jj config key that records which version of jj-octo last set the checkout up. */
+export const SET_UP_VERSION = "jj-octo.set-up-version";
+
+/** The version of jj-octo whose `init` last set the repository up, or `undefined` where none did. */
+export const readSetUpVersion = readJjConfig(SET_UP_VERSION, { repo: true });
+
 /**
  * Makes the git checkout a colocated jj repository. A jj repository further up, holding the
  * checkout as an ordinary directory, doesn't count. A git worktree stays as it is, since a jj

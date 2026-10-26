@@ -4,6 +4,7 @@ import path from "node:path";
 
 import { Effect, type Layer } from "effect";
 
+import manifest from "../../../package.json" with { type: "json" };
 import type { Git } from "../../clients/git";
 import type { Jj } from "../../clients/jj";
 import { gitClone, runIn } from "../../testing/git-clone";
@@ -13,8 +14,9 @@ import {
   scratchDirectory,
   scratchRepository,
 } from "../../testing/scratch-repository";
-import { init } from "./init";
-import { NotSetUp } from "./setup";
+import { problems } from "./doctor";
+import { init, setUpOnUpgrade } from "./init";
+import { NotSetUp, SET_UP_VERSION } from "./setup";
 import { checkTrunk } from "./stack/trunk";
 
 afterAll(removeScratchRepositories);
@@ -169,6 +171,74 @@ describe("init", () => {
     expect(clone.jj("operation", "log", "--no-graph", "-T", String.raw`id ++ "\n"`)).toBe(
       operations,
     );
+  });
+});
+
+type Clone = ReturnType<typeof gitClone>;
+
+/** The version the clone's repository config records setting it up with, as jj lists it. */
+const recorded = (clone: Clone): string => clone.jj("config", "list", "--repo", SET_UP_VERSION);
+
+/** The repository's `jj gh` alias, as jj lists it. */
+const alias = (clone: Clone): string => clone.jj("config", "list", "--repo", "aliases.gh");
+
+const THIS_VERSION = `${SET_UP_VERSION} = "${manifest.version}"\n`;
+const ALIAS = 'aliases.gh = ["util","exec","--","jj-octo"]\n';
+
+/** A clone that init set up, with the version given recorded and the alias removed. */
+const setUpBy = async (version: string): Promise<Clone> => {
+  const clone = gitClone(scratchRepository());
+  await initIn(clone.layer);
+  clone.jj("config", "set", "--repo", SET_UP_VERSION, JSON.stringify(version));
+  clone.jj("config", "unset", "--repo", "aliases.gh");
+  return clone;
+};
+
+describe("the version that set the checkout up", () => {
+  it("is recorded by init", async () => {
+    const clone = gitClone(scratchRepository());
+    await initIn(clone.layer);
+    expect(recorded(clone)).toBe(THIS_VERSION);
+  });
+
+  it("sets up a checkout where no version is recorded", async () => {
+    const clone = gitClone(scratchRepository());
+    clone.jj("git", "init", "--colocate");
+    await runIn(clone.layer, setUpOnUpgrade);
+    expect([await runIn(clone.layer, problems), recorded(clone)]).toStrictEqual([[], THIS_VERSION]);
+  });
+
+  it("sets up a plain git clone", async () => {
+    const clone = gitClone(scratchRepository());
+    await runIn(clone.layer, setUpOnUpgrade);
+    expect([await runIn(clone.layer, problems), recorded(clone)]).toStrictEqual([[], THIS_VERSION]);
+  });
+
+  it.each([
+    { recorded: "0.0.1", setsUp: true, title: "sets it up where an older version is recorded" },
+    { recorded: "dev", setsUp: true, title: "sets it up where what's recorded isn't a version" },
+    {
+      recorded: manifest.version,
+      setsUp: false,
+      title: "leaves it where this version is recorded",
+    },
+    { recorded: "99.0.0", setsUp: false, title: "leaves it where a newer version is recorded" },
+  ])("$title", async ({ recorded: version, setsUp }) => {
+    const clone = await setUpBy(version);
+    await runIn(clone.layer, setUpOnUpgrade);
+    expect([alias(clone), recorded(clone)]).toStrictEqual(
+      setsUp ? [ALIAS, THIS_VERSION] : ["", `${SET_UP_VERSION} = ${JSON.stringify(version)}\n`],
+    );
+  });
+
+  it("records this version, and leaves what's left to doctor, where init can't set the checkout up", async () => {
+    const clone = gitClone(scratchRepository());
+    clone.git("config", "--unset", "user.email");
+    await runIn(clone.layer, setUpOnUpgrade);
+    expect([await runIn(clone.layer, problems), recorded(clone)]).toStrictEqual([
+      ["neither jj nor git has user.email; set it with `jj config set --user user.email`"],
+      THIS_VERSION,
+    ]);
   });
 });
 

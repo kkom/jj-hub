@@ -3,6 +3,7 @@ import { appendFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import manifest from "../package.json" with { type: "json" };
+import { SET_UP_VERSION } from "./cli/gh/setup";
 import {
   type InterceptedRequest,
   type InterceptingProxy,
@@ -98,11 +99,13 @@ const proxyEnv = ({ caFile, url }: InterceptingProxy) => ({
 });
 
 // A repository with change `a` on `main`, whose `origin` is a GitHub repository, and the
-// environment that runs the file in it with its own configuration.
+// environment that runs the file in it with its own configuration. It records this version as
+// the one that set it up, as `init` does, since `init` can't reach that `origin`.
 const checkoutOfA = () => {
   const repository = scratchRepository();
   repository.stack("a");
   repository.jj("git", "remote", "set-url", "origin", "https://github.com/owner/name");
+  repository.jj("config", "set", "--repo", SET_UP_VERSION, JSON.stringify(manifest.version));
   const cwd = repository.jj("root").trim();
   return { cwd, env: isolatedEnv(path.dirname(cwd)), repository };
 };
@@ -163,6 +166,36 @@ describe.each(builds)("$name", ({ command }) => {
       stderr:
         "This Claude Code cloud session can't reach the user's clipboard. To give the user the links, put the Markdown links this command printed in your reply, outside a code block. The Claude app shows them as links, which paste into Slack as links.\n",
       stdout: "👀 [#7 Add a](https://github.com/owner/name/pull/7) +1/-0\n",
+    });
+  });
+
+  it("tries to set a checkout up before a command where no version is recorded", async () => {
+    const received = await throughProxy("api.github.com", pullRequestOfA, async (proxy) => {
+      const { cwd, env, repository } = checkoutOfA();
+      repository.jj("config", "unset", "--repo", SET_UP_VERSION);
+      const { stderr, stdout } = await output(command, ["log"], {
+        cwd,
+        env: { ...env, ...proxyEnv(proxy) },
+      });
+      // What git prints between them depends on the network, which the test doesn't control.
+      const printed = stderr.trimEnd().split("\n");
+      return {
+        firstPrinted: printed.at(0),
+        lastPrinted: printed.at(-1),
+        recorded: repository.jj("config", "get", SET_UP_VERSION),
+        stdout,
+      };
+    });
+    // `init` can't reach this `origin` with git, so it says what's left and the command carries on.
+    expect(received).toStrictEqual({
+      // The first is `init`'s `git ls-remote`, which the proxy doesn't answer for github.com.
+      log: ["CONNECT github.com:443", ...logOfA.log],
+      result: {
+        firstPrinted: `setting this checkout up for jj-octo ${manifest.version}`,
+        lastPrinted: "run `jj-octo init` once that's fixed",
+        recorded: `${manifest.version}\n`,
+        stdout: logOfA.result,
+      },
     });
   });
 

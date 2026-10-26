@@ -28,7 +28,7 @@ mise use --global github:kkom/jj-octo@X.Y.Z
 
 Then run `jj-octo init` once in each checkout. It makes the checkout a jj repository colocated with git, makes GitHub's default branch `trunk()`, and sets the `jj gh` alias.
 
-Run `jj-octo init` again after upgrading jj-octo, to set up what the new version needs. `jj-octo doctor` reports what isn't set up, and changes nothing.
+`init` records its version in the repository's jj config, as `jj-octo.set-up-version`. Every other command except `doctor` runs `init` first where an older version is recorded, or none is. So after an upgrade, the first command sets up what the new version needs. `jj-octo doctor` reports what isn't set up, and changes nothing.
 
 ## GitHub access
 
