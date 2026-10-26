@@ -37,16 +37,29 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      # A pull request that changes the version is a release, so the new version has to be
-      # higher than the base branch's, and one npm doesn't have.
+      # `cd` publishes the version from the last commit of a push. So a pull request above a
+      # release in a stack fails here until the release is merged, and the default branch's
+      # required checks stop the two merging in one push. A pull request that changes the version
+      # is a release, so the new version has to be higher than the base branch's, and one npm
+      # doesn't have.
       - name: Check the version
         if: github.event_name == 'pull_request'
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
           git fetch --depth=1 origin "${GITHUB_BASE_REF}"
-          export HEAD_VERSION BASE_VERSION
+          export HEAD_VERSION BASE_VERSION DEFAULT_VERSION
           HEAD_VERSION=$(jq -r .version package.json)
           BASE_VERSION=$(git show "FETCH_HEAD:package.json" 2>/dev/null | jq -r .version || true)
+          if [ -n "${BASE_VERSION}" ] && [ "${GITHUB_BASE_REF}" != "${DEFAULT_BRANCH}" ]; then
+            git fetch --depth=1 origin "${DEFAULT_BRANCH}"
+            DEFAULT_VERSION=$(git show FETCH_HEAD:package.json | jq -r .version)
+            if [ "$(bun -e 'console.log(Bun.semver.order(process.env.BASE_VERSION, process.env.DEFAULT_VERSION))')" = 1 ]; then
+              echo "::error::A pull request below this one raises the version to ${BASE_VERSION}. Merge it first, with nothing above it, then merge this one."
+              exit 1
+            fi
+          fi
           if [ "${HEAD_VERSION}" = "${BASE_VERSION}" ]; then
             exit 0
           fi
