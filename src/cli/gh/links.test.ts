@@ -11,7 +11,14 @@ import {
 import { fakeConsole } from "../../testing/fake-console";
 import { fakeGitHub, inRepository } from "../../testing/fake-github";
 import { removeScratchRepositories, scratchRepository } from "../../testing/scratch-repository";
-import { htmlLinks, links, markdownLinks, NoPullRequests, stackPullRequests } from "./links";
+import {
+  htmlLinks,
+  type LinkedPullRequest,
+  links,
+  markdownLinks,
+  NoPullRequests,
+  stackPullRequests,
+} from "./links";
 
 afterAll(removeScratchRepositories);
 
@@ -21,6 +28,13 @@ const pullRequest = (number: number, state: PullRequestState, head: string): Lis
   state,
   title: `Pull request ${number}`,
   url: `https://github.com/kkom/jj-octo/pull/${number}`,
+});
+
+// A pull request with the lines its change adds and removes, by default the one line of `stack`.
+const linked = (listed: ListedPullRequest, added = 1, removed = 0): LinkedPullRequest => ({
+  ...listed,
+  added,
+  removed,
 });
 
 // A clipboard that keeps what is written to it, and reports the given outcome.
@@ -45,6 +59,9 @@ describe("stackPullRequests", () => {
     repository.jj("git", "push", "--bookmark", "a");
     const pushedA = commitOf("a");
     repository.jj("describe", "-r", "a", "-m", "a, reworded");
+    repository.write("a.txt", "a, rewritten\n");
+    repository.write("d.txt", "d\nmore\nlines\n");
+    repository.jj("squash", "--into", "d");
     const byBranch: Readonly<Record<string, readonly ListedPullRequest[]>> = {
       a: [pullRequest(1, "merged", pushedA)],
       b: [pullRequest(6, "closed", "an earlier head"), pullRequest(2, "ready", "anything")],
@@ -59,29 +76,29 @@ describe("stackPullRequests", () => {
       stackPullRequests("@").pipe(inRepository(repository, github)),
     );
     expect(found).toStrictEqual([
-      pullRequest(4, "closed", commitOf("d")),
-      pullRequest(3, "draft", "anything"),
-      pullRequest(2, "ready", "anything"),
-      pullRequest(1, "merged", pushedA),
+      linked(pullRequest(4, "closed", commitOf("d")), 4, 1),
+      linked(pullRequest(3, "draft", "anything")),
+      linked(pullRequest(2, "ready", "anything")),
+      linked(pullRequest(1, "merged", pushedA)),
     ]);
   });
 });
 
 describe("markdownLinks and htmlLinks", () => {
   const listed = [
-    pullRequest(4, "closed", "x"),
-    pullRequest(3, "draft", "x"),
-    pullRequest(2, "ready", "x"),
-    { ...pullRequest(1, "merged", "x"), title: `Escape <b> & "quotes"` },
+    linked(pullRequest(4, "closed", "x"), 123, 45),
+    linked(pullRequest(3, "draft", "x"), 0, 7),
+    linked(pullRequest(2, "ready", "x")),
+    { ...linked(pullRequest(1, "merged", "x")), title: `Escape <b> & "quotes"` },
   ];
 
   it("writes a Markdown line per pull request, marked with its state", () => {
     expect(markdownLinks(listed)).toBe(
       [
-        "🚫 [#4 Pull request 4](https://github.com/kkom/jj-octo/pull/4)",
-        "📝 [#3 Pull request 3](https://github.com/kkom/jj-octo/pull/3)",
-        "👀 [#2 Pull request 2](https://github.com/kkom/jj-octo/pull/2)",
-        `🏁 [#1 Escape <b> & "quotes"](https://github.com/kkom/jj-octo/pull/1)`,
+        "🚫 [#4 Pull request 4](https://github.com/kkom/jj-octo/pull/4) +123/-45",
+        "📝 [#3 Pull request 3](https://github.com/kkom/jj-octo/pull/3) +0/-7",
+        "👀 [#2 Pull request 2](https://github.com/kkom/jj-octo/pull/2) +1/-0",
+        `🏁 [#1 Escape <b> & "quotes"](https://github.com/kkom/jj-octo/pull/1) +1/-0`,
       ].join("\n"),
     );
   });
@@ -89,10 +106,10 @@ describe("markdownLinks and htmlLinks", () => {
   it("writes the same lines as HTML, escaping the titles", () => {
     expect(htmlLinks(listed)).toBe(
       [
-        '<meta charset="utf-8">🚫 <a href="https://github.com/kkom/jj-octo/pull/4">#4 Pull request 4</a>',
-        '📝 <a href="https://github.com/kkom/jj-octo/pull/3">#3 Pull request 3</a>',
-        '👀 <a href="https://github.com/kkom/jj-octo/pull/2">#2 Pull request 2</a>',
-        '🏁 <a href="https://github.com/kkom/jj-octo/pull/1">#1 Escape &lt;b&gt; &amp; &quot;quotes&quot;</a>',
+        '<meta charset="utf-8">🚫 <a href="https://github.com/kkom/jj-octo/pull/4">#4 Pull request 4</a> +123/-45',
+        '📝 <a href="https://github.com/kkom/jj-octo/pull/3">#3 Pull request 3</a> +0/-7',
+        '👀 <a href="https://github.com/kkom/jj-octo/pull/2">#2 Pull request 2</a> +1/-0',
+        '🏁 <a href="https://github.com/kkom/jj-octo/pull/1">#1 Escape &lt;b&gt; &amp; &quot;quotes&quot;</a> +1/-0',
       ].join("<br>"),
     );
   });
@@ -124,9 +141,17 @@ describe("links", () => {
         ),
       );
       expect({ copied: clipboard.copied, printed: console.printed }).toStrictEqual({
-        copied: [{ html: htmlLinks([listed]), text: markdownLinks([listed]) }],
+        copied: [
+          {
+            html: '<meta charset="utf-8">📝 <a href="https://github.com/kkom/jj-octo/pull/1">#1 Pull request 1</a> +1/-0',
+            text: "📝 [#1 Pull request 1](https://github.com/kkom/jj-octo/pull/1) +1/-0",
+          },
+        ],
         printed: [
-          { stream: "stdout", text: markdownLinks([listed]) },
+          {
+            stream: "stdout",
+            text: "📝 [#1 Pull request 1](https://github.com/kkom/jj-octo/pull/1) +1/-0",
+          },
           { stream: "stderr", text: report },
         ],
       });
@@ -165,7 +190,12 @@ describe("links", () => {
     );
     expect({ copied: clipboard.copied, printed: console.printed }).toStrictEqual({
       copied: [],
-      printed: [{ stream: "stdout", text: markdownLinks([listed]) }],
+      printed: [
+        {
+          stream: "stdout",
+          text: "📝 [#1 Pull request 1](https://github.com/kkom/jj-octo/pull/1) +1/-0",
+        },
+      ],
     });
   });
 });
