@@ -98,10 +98,13 @@ const pullRequestOf = (
 
 const LINE_COUNTS = String.raw`commit_id ++ "\t" ++ diff.stat().total_added() ++ "\t" ++ diff.stat().total_removed() ++ "\n"`;
 
-/** The lines each of the commits adds and removes, in the same order. */
+/**
+ * The lines each of the commits adds and removes, by commit id. It skips the snapshot, since
+ * `bookmarkTargets` takes one at the same time, and two would be concurrent operations.
+ */
 const lineCountsOf = (
   commitIds: readonly string[],
-): Effect.Effect<readonly LineCounts[], JjFailed, Jj> =>
+): Effect.Effect<ReadonlyMap<string, LineCounts>, JjFailed, Jj> =>
   Effect.gen(function* () {
     const logged = yield* readLog(anyOf(commitIds), LINE_COUNTS, { ignoreWorkingCopy: true });
     const counts = new Map<string, LineCounts>();
@@ -117,13 +120,7 @@ const lineCountsOf = (
         removed: Number(parsed["removed"]),
       });
     }
-    return yield* Effect.forEach(commitIds, (commitId) =>
-      Option.match(Option.fromNullishOr(counts.get(commitId)), {
-        onNone: () =>
-          Effect.fail(new JjFailed({ message: `jj printed no line counts for ${commitId}` })),
-        onSome: Effect.succeed,
-      }),
-    );
+    return counts;
   });
 
 /** The pull request of each change of the revision's stack, top first. */
@@ -143,16 +140,18 @@ export const stackPullRequests = (
       ],
       { concurrency: "unbounded" },
     );
-    return stack
-      .flatMap(({ bookmark, commitId }, index) =>
-        Option.toArray(
-          pullRequestOf(found[index] ?? [], commitId, targets.get(bookmark)?.origin),
-        ).map((pullRequest): LinkedPullRequest => ({
-          ...pullRequest,
-          ...(counts[index] ?? { added: 0, removed: 0 }),
-        })),
-      )
-      .toReversed();
+    const linked = stack.flatMap(({ bookmark, commitId }, index) =>
+      Option.toArray(
+        pullRequestOf(found[index] ?? [], commitId, targets.get(bookmark)?.origin),
+      ).map((pullRequest) =>
+        Option.match(Option.fromNullishOr(counts.get(commitId)), {
+          onNone: () =>
+            Effect.fail(new JjFailed({ message: `jj printed no line counts for ${commitId}` })),
+          onSome: (changed) => Effect.succeed<LinkedPullRequest>({ ...pullRequest, ...changed }),
+        }),
+      ),
+    );
+    return (yield* Effect.all(linked)).toReversed();
   });
 
 /** Prints the links to the stack's pull requests, and writes them to the clipboard if asked. */

@@ -41,8 +41,8 @@ export const parseDescription = (json: string): string => {
 
 /**
  * What `jj log` prints for the revset's commits with the template, bottom first.
- * `ignoreWorkingCopy` skips the snapshot, for reading commits an earlier read returned: a snapshot
- * gives the working copy's change a new commit where a file changed since.
+ * `ignoreWorkingCopy` skips the snapshot of the working copy, so the read can run alongside another
+ * jj command that takes one.
  */
 export const readLog = (
   revset: string,
