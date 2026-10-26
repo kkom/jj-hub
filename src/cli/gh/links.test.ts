@@ -81,7 +81,7 @@ describe("markdownLinks and htmlLinks", () => {
         "🚫 [#4 Pull request 4](https://github.com/kkom/jj-octo/pull/4)",
         "📝 [#3 Pull request 3](https://github.com/kkom/jj-octo/pull/3)",
         "👀 [#2 Pull request 2](https://github.com/kkom/jj-octo/pull/2)",
-        `✅ [#1 Escape <b> & "quotes"](https://github.com/kkom/jj-octo/pull/1)`,
+        `🏁 [#1 Escape <b> & "quotes"](https://github.com/kkom/jj-octo/pull/1)`,
       ].join("\n"),
     );
   });
@@ -92,7 +92,7 @@ describe("markdownLinks and htmlLinks", () => {
         '<meta charset="utf-8">🚫 <a href="https://github.com/kkom/jj-octo/pull/4">#4 Pull request 4</a>',
         '📝 <a href="https://github.com/kkom/jj-octo/pull/3">#3 Pull request 3</a>',
         '👀 <a href="https://github.com/kkom/jj-octo/pull/2">#2 Pull request 2</a>',
-        '✅ <a href="https://github.com/kkom/jj-octo/pull/1">#1 Escape &lt;b&gt; &amp; &quot;quotes&quot;</a>',
+        '🏁 <a href="https://github.com/kkom/jj-octo/pull/1">#1 Escape &lt;b&gt; &amp; &quot;quotes&quot;</a>',
       ].join("<br>"),
     );
   });
