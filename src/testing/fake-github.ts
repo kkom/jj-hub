@@ -44,7 +44,7 @@ export const fakeGitHub = (
       record(`create stack ${pullRequests.join(",")}`).pipe(
         Effect.tap(() =>
           Effect.sync(() => {
-            registered = Option.some({ number: StackNumberSchema.make(8), open: pullRequests });
+            registered = Option.some({ number: StackNumberSchema.make(8), unmerged: pullRequests });
           }),
         ),
         Effect.as(StackNumberSchema.make(8)),
@@ -87,9 +87,9 @@ export const fakeGitHub = (
 export const pullRequests = (...numbers: readonly number[]): readonly PullRequestNumber[] =>
   numbers.map((number) => PullRequestNumberSchema.make(number));
 
-/** Stack #7, with the given open pull requests. */
-export const stackOf = (...open: readonly number[]): Option.Option<RemoteStack> =>
-  Option.some({ number: StackNumberSchema.make(7), open: pullRequests(...open) });
+/** Stack #7, with the given pull requests that haven't merged. */
+export const stackOf = (...unmerged: readonly number[]): Option.Option<RemoteStack> =>
+  Option.some({ number: StackNumberSchema.make(7), unmerged: pullRequests(...unmerged) });
 
 /** An open draft pull request with a title and no body. */
 export const openPullRequest = (base: string, number: number, title: string): PullRequest => ({

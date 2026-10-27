@@ -26,8 +26,11 @@ export interface ListedPullRequest {
   readonly url: string;
 }
 
-/** A stack registered on GitHub, with its open pull requests bottom to top. */
+/**
+ * A stack registered on GitHub, with its pull requests that haven't merged bottom to top. One closed
+ * without merging stays in the stack, so it is among them.
+ */
 export interface RemoteStack {
   readonly number: StackNumber;
-  readonly open: readonly PullRequestNumber[];
+  readonly unmerged: readonly PullRequestNumber[];
 }

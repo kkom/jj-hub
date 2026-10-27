@@ -1,7 +1,12 @@
 import { Schema } from "effect";
 
 import { responseOf } from "./openapi";
-import { type ListedPullRequest, PullRequestNumberSchema, StackNumberSchema } from "./types";
+import {
+  type ListedPullRequest,
+  PullRequestNumberSchema,
+  type RemoteStack,
+  StackNumberSchema,
+} from "./types";
 
 // The fields read from each GitHub response the client decodes.
 
@@ -36,8 +41,8 @@ export const AnyPullRequests = responseOf<"pulls/list">()(
   ),
 );
 const StackedPullRequest = Schema.Struct({
+  merged_at: Schema.NullOr(Schema.String),
   number: PullRequestNumberSchema,
-  state: Schema.Literals(["closed", "open"]),
 });
 export const Stacks = responseOf<"pull-request-stacks/list">()(
   Schema.Array(
@@ -71,3 +76,14 @@ export const listedPullRequest = ({
   const closed = merged_at === null ? "closed" : "merged";
   return { head: head.sha, number, state: state === "open" ? open : closed, title, url: html_url };
 };
+
+/** One stack of a `Stacks` listing, with the pull requests that haven't merged, bottom to top. */
+export const remoteStack = ({
+  number,
+  pull_requests,
+}: (typeof Stacks.Type)[number]): RemoteStack => ({
+  number,
+  unmerged: pull_requests
+    .filter(({ merged_at }) => merged_at === null)
+    .map((pullRequest) => pullRequest.number),
+});

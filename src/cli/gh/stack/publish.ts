@@ -53,7 +53,7 @@ const stackContaining = (pullRequests: readonly PullRequestNumber[]) =>
     return Option.fromNullishOr(stacks[0]);
   });
 
-/** Makes the pull requests, bottom to top, the open part of one GitHub stack. */
+/** Makes the pull requests, bottom to top, the unmerged part of one GitHub stack. */
 const register = (
   remaining: Option.Option<RemoteStack>,
   pullRequests: readonly PullRequestNumber[],

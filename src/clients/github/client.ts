@@ -9,6 +9,7 @@ import {
   CreatedPullRequest,
   CreatedStack,
   listedPullRequest,
+  remoteStack,
   MergeResult,
   PullRequests,
   RepositoryDetails,
@@ -151,12 +152,7 @@ export const GitHubLive = (
       const stackOf = (pullRequest: PullRequestNumber) =>
         json(Stacks)(HttpClientRequest.get(repo(`/stacks?pull_request=${pullRequest}`))).pipe(
           Effect.map((stacks) =>
-            Option.map(Option.fromNullishOr(stacks[0]), (stack) => ({
-              number: stack.number,
-              open: stack.pull_requests
-                .filter(({ state }) => state === "open")
-                .map(({ number }) => number),
-            })),
+            Option.map(Option.fromNullishOr(stacks[0]), (stack) => remoteStack(stack)),
           ),
         );
 
