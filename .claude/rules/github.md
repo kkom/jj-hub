@@ -12,7 +12,7 @@ Checks and runs take minutes to appear, so an empty listing doesn't mean there w
 
 ## Leave an abandoned branch in place
 
-A cloud session can't delete a remote branch. `branch-cleanup.yaml` deletes it daily once its last commit is two weeks old, unless an open pull request has it as its head or base. It keeps a branch pushed to after its latest pull request closed, and lists it in each run's summary for a person to delete. So give work that follows a closed pull request a new branch.
+A cloud session can't delete a remote branch. `branch-cleanup.yaml` deletes it daily once its last commit is two weeks old, unless it's protected, GitHub Pages publishes from it, or an open pull request has it as its head or base. A branch pushed to after its latest pull request closed is kept until two weeks after that pull request closed. So give work that follows a closed pull request a new branch.
 
 ## Follow the PR template
 
