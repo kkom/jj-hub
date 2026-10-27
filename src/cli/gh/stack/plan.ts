@@ -21,8 +21,8 @@ export type Registration =
  * Whether the GitHub stack has to be dissolved before the wanted pull requests can be arranged,
  * bottom to top, where a pull request not opened yet is `none`. GitHub rejects a base change on a
  * pull request in a stack, and can only add to a stack's top. So the stack stays only where no
- * base moves, and either its open pull requests are the bottom of what is wanted, or what is
- * wanted is the bottom of them.
+ * base moves, and either its pull requests that haven't merged are the bottom of what is wanted, or
+ * what is wanted is the bottom of them.
  */
 export const mustDissolve = (
   existing: Option.Option<RemoteStack>,
@@ -32,14 +32,16 @@ export const mustDissolve = (
   if (Option.isNone(existing)) {
     return false;
   }
-  const { open } = existing.value;
+  const { unmerged } = existing.value;
   const matches = (index: number): boolean => {
     const pullRequest = wanted[index];
     return (
-      pullRequest !== undefined && Option.isSome(pullRequest) && pullRequest.value === open[index]
+      pullRequest !== undefined &&
+      Option.isSome(pullRequest) &&
+      pullRequest.value === unmerged[index]
     );
   };
-  const shorter = Math.min(open.length, wanted.length);
+  const shorter = Math.min(unmerged.length, wanted.length);
   const agree =
     shorter > 0 &&
     Array.from({ length: shorter }, (_, index) => index).every((index) => matches(index));
@@ -47,7 +49,7 @@ export const mustDissolve = (
 };
 
 /**
- * What makes the pull requests, bottom to top, the open part of one GitHub stack, given the stack
+ * What makes the pull requests, bottom to top, the unmerged part of one GitHub stack, given the stack
  * left after any dissolving. A single pull request can't be a stack at all.
  */
 export const registrationFor = (
@@ -57,9 +59,9 @@ export const registrationFor = (
   if (Option.isNone(remaining)) {
     return wanted.length > 1 ? { _tag: "Create", pullRequests: wanted } : { _tag: "Unchanged" };
   }
-  const { number, open } = remaining.value;
-  return wanted.length > open.length
-    ? { _tag: "Append", pullRequests: wanted.slice(open.length), stack: number }
+  const { number, unmerged } = remaining.value;
+  return wanted.length > unmerged.length
+    ? { _tag: "Append", pullRequests: wanted.slice(unmerged.length), stack: number }
     : { _tag: "Unchanged" };
 };
 

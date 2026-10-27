@@ -47,8 +47,8 @@ const mergeOnGitHub = ({ base, number }: PullRequest, trunk: string) =>
     const github = yield* GitHub;
     const stack = yield* github.stackOf(number);
     if (Option.isSome(stack)) {
-      const { open } = stack.value;
-      yield* Console.error(`merging ${numbered(open.slice(0, open.indexOf(number) + 1))}`);
+      const { unmerged } = stack.value;
+      yield* Console.error(`merging ${numbered(unmerged.slice(0, unmerged.indexOf(number) + 1))}`);
       return yield* github.mergeStack(number);
     }
     // Outside a GitHub stack a merge goes into the pull request's base, and takes nothing below
