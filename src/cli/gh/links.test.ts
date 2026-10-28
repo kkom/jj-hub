@@ -132,6 +132,13 @@ const inStack = (listed: LinkedPullRequest, number: number): LinkedPullRequest =
 });
 
 describe("markdownLinks and htmlLinks with stacks", () => {
+  it("links no stack where no pull request is open", () => {
+    const merged = inStack(linked(pullRequest(1, "merged", "x")), 7);
+    expect(markdownLinks([merged])).toBe(
+      "🏁 [#1 Pull request 1](https://github.com/kkom/jj-octo/pull/1) `+1/-0`",
+    );
+  });
+
   // A stack registered again under a new number leaves its merged pull requests in the old one.
   const listed = [
     inStack(linked(pullRequest(3, "ready", "x")), 8),
@@ -139,18 +146,16 @@ describe("markdownLinks and htmlLinks with stacks", () => {
     inStack(linked(pullRequest(1, "merged", "x")), 7),
   ];
 
-  it("links each stack once, above the pull requests", () => {
+  it("links the stack of the open pull requests, above the pull requests", () => {
     expect([markdownLinks(listed), htmlLinks(listed)]).toStrictEqual([
       [
-        "📚 [Stack #8](https://github.com/kkom/jj-octo/stack/8)",
-        "📚 [Stack #7](https://github.com/kkom/jj-octo/stack/7)",
+        "📚 Current stack: [#8](https://github.com/kkom/jj-octo/stack/8)",
         "👀 [#3 Pull request 3](https://github.com/kkom/jj-octo/pull/3) `+1/-0`",
         "👀 [#2 Pull request 2](https://github.com/kkom/jj-octo/pull/2) `+1/-0`",
         "🏁 [#1 Pull request 1](https://github.com/kkom/jj-octo/pull/1) `+1/-0`",
       ].join("\n"),
       [
-        '<meta charset="utf-8">📚 <a href="https://github.com/kkom/jj-octo/stack/8">Stack #8</a>',
-        '📚 <a href="https://github.com/kkom/jj-octo/stack/7">Stack #7</a>',
+        '<meta charset="utf-8">📚 Current stack: <a href="https://github.com/kkom/jj-octo/stack/8">#8</a>',
         '👀 <a href="https://github.com/kkom/jj-octo/pull/3">#3 Pull request 3</a> <code>+1/-0</code>',
         '👀 <a href="https://github.com/kkom/jj-octo/pull/2">#2 Pull request 2</a> <code>+1/-0</code>',
         '🏁 <a href="https://github.com/kkom/jj-octo/pull/1">#1 Pull request 1</a> <code>+1/-0</code>',
@@ -259,7 +264,7 @@ describe("links", () => {
       {
         stream: "stdout",
         text: [
-          "📚 [Stack #5](https://github.com/kkom/jj-octo/stack/5)",
+          "📚 Current stack: [#5](https://github.com/kkom/jj-octo/stack/5)",
           "👀 [#2 Pull request 2](https://github.com/kkom/jj-octo/pull/2) `+1/-0`",
           "👀 [#1 Pull request 1](https://github.com/kkom/jj-octo/pull/1) `+1/-0`",
         ].join("\n"),
