@@ -41,7 +41,7 @@ All of them run from any directory of the checkout, and `jj help <command>` cove
 | `jj gh init` | Sets up a checkout: colocates jj with git, makes GitHub's default branch `trunk()` and sets the `jj gh` alias. The other commands run it again after an upgrade of jj-octo |
 | `jj gh doctor` | Checks what `jj gh init` sets up, and prints each problem with what fixes it, without changing anything |
 | `jj gh log` | Shows the stack's changes, their pull requests and whether each is pushed |
-| `jj gh links` | Prints a link to each GitHub stack the pull requests are in, then the stack's pull requests as Markdown links, top first, each marked as a draft, ready, merged or closed, and followed by the lines its change adds and removes, in inline code, as `` `+123/-45` ``. `--copy` also puts them on the clipboard as links that Slack pastes, or in a Claude Code cloud session says how to give them to the user |
+| `jj gh links` | Prints a link to the GitHub stack of the open pull requests, where they are in one, then the stack's pull requests as Markdown links, top first, each marked as a draft, ready, merged or closed, and followed by the lines its change adds and removes, in inline code, as `` `+123/-45` ``. `--copy` also puts them on the clipboard as links that Slack pastes, or in a Claude Code cloud session says how to give them to the user |
 | `jj gh submit` | Pushes the working copy's change and the ones below it, and makes their pull requests one GitHub stack |
 | `jj gh merge -r <change>` | Merges the pull requests of that change and the ones below it, then syncs and republishes the rest of the stack |
 | `jj gh sync` | Rebases every stack onto the fetched trunk and drops what merged |

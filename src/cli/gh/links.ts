@@ -64,12 +64,12 @@ export interface LinkedPullRequest extends ListedPullRequest, LineCounts {}
 
 const lineCounts = ({ added, removed }: LineCounts): string => `+${added}/-${removed}`;
 
-/** The GitHub stacks the pull requests are in, each once, in the order of the pull requests. */
-const stacksOf = (pullRequests: readonly LinkedPullRequest[]): readonly StackLink[] =>
-  EffectArray.dedupeWith(
-    EffectArray.getSomes(pullRequests.map(({ stack }) => stack)),
-    (one, other) => one.number === other.number,
-  );
+/**
+ * The GitHub stack of the open pull requests. A merged one can be in an older stack, which `submit`
+ * dissolved and registered again under a new number.
+ */
+const currentStack = (pullRequests: readonly LinkedPullRequest[]): Option.Option<StackLink> =>
+  EffectArray.findFirst(pullRequests, ({ stack, state }) => (OPEN[state] ? stack : Option.none()));
 
 /** How a line of links writes a link and a code span: as Markdown or as HTML. */
 interface LinkFormat {
@@ -77,13 +77,13 @@ interface LinkFormat {
   readonly link: (text: string, url: string) => string;
 }
 
-/** One line per GitHub stack the pull requests are in, then one per pull request. */
+/** One line for the stack of the open pull requests, where they are in one, then one per pull request. */
 const linkLines = (
   pullRequests: readonly LinkedPullRequest[],
   { code, link }: LinkFormat,
 ): readonly string[] => [
-  ...stacksOf(pullRequests).map(
-    ({ number, url }) => `${STACK_EMOJI} ${link(`Stack #${number}`, url)}`,
+  ...Option.toArray(currentStack(pullRequests)).map(
+    ({ number, url }) => `${STACK_EMOJI} Current stack: ${link(`#${number}`, url)}`,
   ),
   ...pullRequests.map(
     (pullRequest) =>
@@ -211,7 +211,7 @@ export const linksCommand = Command.make(
 ).pipe(
   withHelp(
     "Print the stack's pull requests as Markdown links",
-    "Prints a link to each GitHub stack the pull requests are in, as 📚 and the stack's number. Then prints one line per pull request, top first: 📝 for a draft, 👀 for one ready for review, 🏁 for a merged one and 🚫 for one closed unmerged, then a Markdown link showing its number and title, then the lines its change adds and removes, in inline code, as `+123/-45`.",
+    'Prints a link to the GitHub stack of the open pull requests, where they are in one. It says "Current stack", since `submit` registers a stack again under a new number when it moves a base. Then prints one line per pull request, top first: 📝 for a draft, 👀 for one ready for review, 🏁 for a merged one and 🚫 for one closed unmerged, then a Markdown link showing its number and title, then the lines its change adds and removes, in inline code, as `+123/-45`.',
     "A change's pull request is the open one from its branch, or else the newest closed one whose head is the change or the commit pushed for it. A change with no pull request is left out, as is one that `sync` abandoned because its pull request merged. Fails where no change has one.",
     "With `--copy`, also puts the links on the clipboard as HTML, which Slack and other apps paste as links. That runs `osascript` on macOS, which also copies the Markdown as plain text, and `wl-copy` or `xclip` on Linux, which copy the HTML alone.",
     "In a Claude Code cloud session, where `CLAUDE_CODE_REMOTE` is `true`, `--copy` copies nothing. It prints the Markdown between begin and end markers, and tells the agent to copy what is between them into its reply. The Claude app shows that as links that paste into Slack.",
