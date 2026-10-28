@@ -181,8 +181,13 @@ describe.each(builds)("$name", ({ command }) => {
     });
     expect(received.result).toStrictEqual({
       stderr:
-        "This Claude Code cloud session can't reach the user's clipboard. Put the lines above in your reply exactly as printed, without adding backticks or a code block, so they show as links that paste into Slack.\n",
-      stdout: "👀 [#7 Add a](https://github.com/owner/name/pull/7) `+1/-0`\n",
+        "This Claude Code cloud session can't reach the user's clipboard. Copy the lines between the markers into your reply verbatim: without the markers, a code block or added backticks. They then show as links that paste into Slack.\n",
+      stdout: [
+        "-----BEGIN TEXT TO PASTE VERBATIM-----",
+        "👀 [#7 Add a](https://github.com/owner/name/pull/7) `+1/-0`",
+        "-----END TEXT TO PASTE VERBATIM-----",
+        "",
+      ].join("\n"),
     });
   });
 

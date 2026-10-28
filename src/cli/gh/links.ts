@@ -40,13 +40,23 @@ const OPEN: Readonly<Record<PullRequestState, boolean>> = {
   ready: true,
 };
 
-/** What `--copy` prints after the links, for each outcome of the clipboard's `write`. */
+/** What `--copy` reports after the links, for each outcome of the clipboard's `write`. */
 const COPY_REPORT: Readonly<Record<ClipboardWrite, string>> = {
   copied: "copied the links to the clipboard",
   unreachable: [
     "This Claude Code cloud session can't reach the user's clipboard.",
-    "Put the lines above in your reply exactly as printed, without adding backticks or a code block, so they show as links that paste into Slack.",
+    "Copy the lines between the markers into your reply verbatim: without the markers, a code block or added backticks.",
+    "They then show as links that paste into Slack.",
   ].join(" "),
+};
+
+/** What `--copy` prints of the links, for each outcome of the clipboard's `write`. */
+const COPY_PRINT: Readonly<Record<ClipboardWrite, (text: string) => string>> = {
+  copied: (text) => text,
+  unreachable: (text) =>
+    ["-----BEGIN TEXT TO PASTE VERBATIM-----", text, "-----END TEXT TO PASTE VERBATIM-----"].join(
+      "\n",
+    ),
 };
 
 /** A change's pull request, with the lines the change adds and removes. */
@@ -173,11 +183,16 @@ export const links = ({
       ),
     );
     const text = markdownLinks(pullRequests);
-    yield* Console.log(text);
     if (copy) {
       const clipboard = yield* Clipboard;
-      const written = yield* clipboard.write({ html: htmlLinks(pullRequests), text });
+      // The links still reach the terminal where the clipboard fails.
+      const written = yield* clipboard
+        .write({ html: htmlLinks(pullRequests), text })
+        .pipe(Effect.tapError(() => Console.log(text)));
+      yield* Console.log(COPY_PRINT[written](text));
       yield* Console.error(COPY_REPORT[written]);
+    } else {
+      yield* Console.log(text);
     }
   });
 
@@ -199,7 +214,7 @@ export const linksCommand = Command.make(
     "Prints a link to each GitHub stack the pull requests are in, as 📚 and the stack's number. Then prints one line per pull request, top first: 📝 for a draft, 👀 for one ready for review, 🏁 for a merged one and 🚫 for one closed unmerged, then a Markdown link showing its number and title, then the lines its change adds and removes, in inline code, as `+123/-45`.",
     "A change's pull request is the open one from its branch, or else the newest closed one whose head is the change or the commit pushed for it. A change with no pull request is left out, as is one that `sync` abandoned because its pull request merged. Fails where no change has one.",
     "With `--copy`, also puts the links on the clipboard as HTML, which Slack and other apps paste as links. That runs `osascript` on macOS, which also copies the Markdown as plain text, and `wl-copy` or `xclip` on Linux, which copy the HTML alone.",
-    "In a Claude Code cloud session, where `CLAUDE_CODE_REMOTE` is `true`, `--copy` copies nothing. It tells the agent to put the Markdown in its reply, which the Claude app shows as links that paste into Slack.",
+    "In a Claude Code cloud session, where `CLAUDE_CODE_REMOTE` is `true`, `--copy` copies nothing. It prints the Markdown between begin and end markers, and tells the agent to copy what is between them into its reply. The Claude app shows that as links that paste into Slack.",
     "Fails if the changes aren't a chain, if one has conflicts, or if one doesn't have exactly one bookmark, as `log` does. Changes nothing, locally or on GitHub.",
   ),
 );

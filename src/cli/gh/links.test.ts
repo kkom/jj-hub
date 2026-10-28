@@ -1,8 +1,13 @@
 import { afterAll, describe, expect, it } from "bun:test";
 
-import { Effect, Layer, Option } from "effect";
+import { Effect, Exit, Layer, Option } from "effect";
 
-import { Clipboard, type ClipboardWrite, type RichText } from "../../clients/clipboard";
+import {
+  Clipboard,
+  ClipboardFailed,
+  type ClipboardWrite,
+  type RichText,
+} from "../../clients/clipboard";
 import {
   type ListedPullRequest,
   PullRequestNumberSchema,
@@ -155,15 +160,22 @@ describe("markdownLinks and htmlLinks with stacks", () => {
 });
 
 describe("links", () => {
+  const draft = linked(pullRequest(1, "draft", "anything"));
+
   it.each([
-    ["copied", "copied the links to the clipboard"],
+    ["copied", markdownLinks([draft]), "copied the links to the clipboard"],
     [
       "unreachable",
-      "This Claude Code cloud session can't reach the user's clipboard. Put the lines above in your reply exactly as printed, without adding backticks or a code block, so they show as links that paste into Slack.",
+      [
+        "-----BEGIN TEXT TO PASTE VERBATIM-----",
+        markdownLinks([draft]),
+        "-----END TEXT TO PASTE VERBATIM-----",
+      ].join("\n"),
+      "This Claude Code cloud session can't reach the user's clipboard. Copy the lines between the markers into your reply verbatim: without the markers, a code block or added backticks. They then show as links that paste into Slack.",
     ],
   ] as const)(
     "writes the links to the clipboard as HTML and Markdown when asked, and reports %s",
-    async (outcome, report) => {
+    async (outcome, stdout, report) => {
       const repository = scratchRepository();
       repository.stack("a");
       const listed = pullRequest(1, "draft", "anything");
@@ -182,12 +194,34 @@ describe("links", () => {
       expect({ copied: clipboard.copied, printed: console.printed }).toStrictEqual({
         copied: [{ html: htmlLinks([linked(listed)]), text: markdownLinks([linked(listed)]) }],
         printed: [
-          { stream: "stdout", text: markdownLinks([linked(listed)]) },
+          { stream: "stdout", text: stdout },
           { stream: "stderr", text: report },
         ],
       });
     },
   );
+
+  it("prints the links where the clipboard fails", async () => {
+    const repository = scratchRepository();
+    repository.stack("a");
+    const listed = pullRequest(1, "draft", "anything");
+    const github = fakeGitHub({}, Option.none(), {
+      pullRequestsFrom: (branch) => (branch === "a" ? [listed] : []),
+    });
+    const failure = new ClipboardFailed({ message: "xclip exited with 1" });
+    const console = fakeConsole();
+    const exit = await Effect.runPromiseExit(
+      links({ copy: true, revision: "@" }).pipe(
+        Effect.provide(Layer.succeed(Clipboard, { write: () => Effect.fail(failure) })),
+        inRepository(repository, github),
+        console.provide,
+      ),
+    );
+    expect({ exit, printed: console.printed }).toStrictEqual({
+      exit: Exit.fail(failure),
+      printed: [{ stream: "stdout", text: markdownLinks([linked(listed)]) }],
+    });
+  });
 
   it("fails, copying nothing, where no change has a pull request", async () => {
     const repository = scratchRepository();
