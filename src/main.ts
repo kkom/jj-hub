@@ -1,10 +1,11 @@
 #!/usr/bin/env -S bun --no-env-file --config=/dev/null
 import { BunRuntime, BunServices } from "@effect/platform-bun";
 import { Effect, Layer } from "effect";
-import { CliConfig, Command, GlobalFlag } from "effect/cli";
+import { CliConfig, CliOutput, Command, GlobalFlag, TerminalCapabilities } from "effect/cli";
 import { FetchHttpClient } from "effect/http";
 
 import manifest from "../package.json" with { type: "json" };
+import { helpFormatter } from "./cli/command";
 import { jjGhCommand } from "./cli/gh/command";
 import { GitLive } from "./clients/git";
 import { JjLive } from "./clients/jj";
@@ -20,6 +21,14 @@ BunRuntime.runMain(
         builtIns: [GlobalFlag.Help, GlobalFlag.Version, GlobalFlag.Wizard, GlobalFlag.LogLevel],
       }),
     ),
-    Effect.provide([BunServices.layer, FetchHttpClient.layer]),
+    Effect.provide([
+      BunServices.layer,
+      Layer.effect(CliOutput.Formatter)(
+        Effect.map(TerminalCapabilities.TerminalCapabilities, ({ canColor }) =>
+          helpFormatter(canColor),
+        ),
+      ),
+      FetchHttpClient.layer,
+    ]),
   ),
 );

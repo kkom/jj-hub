@@ -4,6 +4,7 @@ import path from "node:path";
 
 import manifest from "../package.json" with { type: "json" };
 import { SET_UP_VERSION } from "./cli/gh/setup";
+import { ENVIRONMENT_VARIABLES, SETTINGS } from "./settings";
 import {
   type InterceptedRequest,
   type InterceptingProxy,
@@ -115,6 +116,22 @@ describe.each(builds)("$name", ({ command }) => {
     expect(await run(command, ["--version"], { cwd: process.cwd(), env: {} })).toBe(
       `jj gh v${manifest.version}\n`,
     );
+  });
+
+  it("documents every setting and environment variable in its help", async () => {
+    const printed = await run(command, ["--help"], { cwd: process.cwd(), env: {} });
+    const help = printed.split("\n");
+    expect({
+      environment: help.flatMap(
+        (line) => /^ {2}(?<name>[A-Z][\d_A-Z]+) {3}/u.exec(line)?.groups?.["name"] ?? [],
+      ),
+      sections: help.filter((line) => /^[A-Z]/u.test(line)),
+      settings: help.filter((line) => line.startsWith("  jj-octo.")).map((line) => line.trim()),
+    }).toStrictEqual({
+      environment: ENVIRONMENT_VARIABLES.map(({ name }) => name),
+      sections: ["DESCRIPTION", "USAGE", "GLOBAL FLAGS", "SUBCOMMANDS", "SETTINGS", "ENVIRONMENT"],
+      settings: SETTINGS.map(({ key }) => key),
+    });
   });
 
   it("reads pull requests through git's proxy for github.com", async () => {
