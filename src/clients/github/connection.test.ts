@@ -5,6 +5,7 @@ import path from "node:path";
 import { BunServices } from "@effect/platform-bun";
 import { Effect, Layer, Option, Redacted } from "effect";
 
+import { GITHUB_AUTH } from "../../settings";
 import { environment } from "../../testing/environment";
 import { gitClone } from "../../testing/git-clone";
 import {
@@ -12,7 +13,7 @@ import {
   scratchDirectory,
   scratchRepository,
 } from "../../testing/scratch-repository";
-import { authKey, connection } from "./connection";
+import { connection } from "./connection";
 
 afterAll(removeScratchRepositories);
 
@@ -52,7 +53,7 @@ describe("connection", () => {
     writeFileSync(ca, "certificate\n");
     git("config", "http.https://github.com/.proxy", "http://127.0.0.1:1234");
     git("config", "http.https://github.com/.sslCAInfo", ca);
-    jj("config", "set", "--repo", authKey, "git-proxy");
+    jj("config", "set", "--repo", GITHUB_AUTH.key, "git-proxy");
     expect(await resolve()).toStrictEqual({
       proxy: { ca: "certificate\n", url: "http://127.0.0.1:1234" },
       token: "proxy-injected",
@@ -62,7 +63,7 @@ describe("connection", () => {
   it("uses the system's certificate authorities where git names no CA bundle", async () => {
     const { git, jj, resolve } = checkout();
     git("config", "http.proxy", "http://127.0.0.1:1234");
-    jj("config", "set", "--repo", authKey, "git-proxy");
+    jj("config", "set", "--repo", GITHUB_AUTH.key, "git-proxy");
     expect(await resolve()).toStrictEqual({
       proxy: { ca: undefined, url: "http://127.0.0.1:1234" },
       token: "proxy-injected",
@@ -72,7 +73,7 @@ describe("connection", () => {
   it("reads a proxy without a scheme as an HTTP one, as git does", async () => {
     const { git, jj, resolve } = checkout();
     git("config", "http.proxy", "127.0.0.1:1234");
-    jj("config", "set", "--repo", authKey, "git-proxy");
+    jj("config", "set", "--repo", GITHUB_AUTH.key, "git-proxy");
     expect(await resolve()).toStrictEqual({
       proxy: { ca: undefined, url: "http://127.0.0.1:1234" },
       token: "proxy-injected",
@@ -82,7 +83,7 @@ describe("connection", () => {
   it("fails for git-proxy where git has no proxy for github.com", async () => {
     const { failure, git, jj } = checkout({ GH_TOKEN: "own-token" });
     git("config", "http.https://example.com/.proxy", "http://127.0.0.1:1234");
-    jj("config", "set", "--repo", authKey, "git-proxy");
+    jj("config", "set", "--repo", GITHUB_AUTH.key, "git-proxy");
     expect(await failure()).toBe(
       "jj-octo.github-auth is git-proxy, but git has no http.proxy for https://github.com",
     );
@@ -90,7 +91,7 @@ describe("connection", () => {
 
   it("fails for a value it doesn't know", async () => {
     const { failure, jj } = checkout({ GH_TOKEN: "own-token" });
-    jj("config", "set", "--repo", authKey, "proxy");
+    jj("config", "set", "--repo", GITHUB_AUTH.key, "proxy");
     expect(await failure()).toBe('jj-octo.github-auth is "proxy"; set it to token or git-proxy');
   });
 });

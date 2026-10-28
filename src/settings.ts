@@ -1,0 +1,144 @@
+import { Config, Effect } from "effect";
+
+import { type Jj, JjFailed, readJjConfig } from "./clients/jj";
+
+// The options a user sets for jj-octo, outside its flags. The code reads each through the model
+// here, and `jj gh --help` documents each from it.
+
+/** An environment variable that changes what jj-octo does. */
+export interface EnvironmentVariable {
+  readonly description: string;
+  readonly name: string;
+}
+
+export const GH_TOKEN: EnvironmentVariable = {
+  description: "The GitHub token that jj-octo sends, where `jj-octo.github-auth` is `token`.",
+  name: "GH_TOKEN",
+};
+
+export const GITHUB_TOKEN: EnvironmentVariable = {
+  description:
+    "The GitHub token that jj-octo sends where `GH_TOKEN` is unset. Where neither is set, jj-octo runs `gh auth token` and sends the token it prints.",
+  name: "GITHUB_TOKEN",
+};
+
+const CLAUDE_CODE_REMOTE: EnvironmentVariable = {
+  description:
+    "`true` in a Claude Code cloud session. There, `links --copy` says how to give the links to the user instead of copying them, and `jj-octo.ignore-claude-code-footer` is `true` by default.",
+  name: "CLAUDE_CODE_REMOTE",
+};
+
+export const WAYLAND_DISPLAY: EnvironmentVariable = {
+  description:
+    "Where set and not empty on Linux, `links --copy` copies with `wl-copy`, or with `xclip` where `wl-copy` isn't installed. Otherwise, it copies with `xclip`.",
+  name: "WAYLAND_DISPLAY",
+};
+
+// Effect reads this one, and Bun the two after it, rather than jj-octo.
+const NO_COLOR: EnvironmentVariable = {
+  description:
+    "Where set and not empty, help and errors are printed without colors. Otherwise they have colors where stdout is a terminal or `FORCE_COLOR` is set, unless `TERM` is `dumb`.",
+  name: "NO_COLOR",
+};
+
+const HTTPS_PROXY: EnvironmentVariable = {
+  description:
+    "The proxy that requests to api.github.com go through, where `jj-octo.github-auth` is `token`. An Anthropic-hosted Claude Code cloud session sets it to its GitHub proxy.",
+  name: "HTTPS_PROXY",
+};
+
+const NODE_EXTRA_CA_CERTS: EnvironmentVariable = {
+  description:
+    "A file of PEM certificates that requests to api.github.com trust besides Bun's own, where `jj-octo.github-auth` is `token`. An Anthropic-hosted Claude Code cloud session sets it to the certificates of its GitHub proxy.",
+  name: "NODE_EXTRA_CA_CERTS",
+};
+
+export const ENVIRONMENT_VARIABLES: readonly EnvironmentVariable[] = [
+  GH_TOKEN,
+  GITHUB_TOKEN,
+  CLAUDE_CODE_REMOTE,
+  WAYLAND_DISPLAY,
+  NO_COLOR,
+  HTTPS_PROXY,
+  NODE_EXTRA_CA_CERTS,
+];
+
+/** Whether this runs in a Claude Code cloud session, which sets `CLAUDE_CODE_REMOTE` to `true`. */
+export const claudeCodeCloudSession: Effect.Effect<boolean> = Effect.orDie(
+  // The variable defaults to empty, and any string is valid, so reading it can't fail.
+  Config.String(CLAUDE_CODE_REMOTE.name).pipe(
+    Config.withDefault(""),
+    Config.map((value) => value === "true"),
+  ),
+);
+
+/** A value that a setting takes, and what it does. */
+export interface Choice<A> {
+  readonly description: string;
+  readonly value: A;
+}
+
+/** A key in jj's config that changes what jj-octo does. */
+export interface Setting<A extends boolean | string> {
+  readonly choices: readonly Choice<A>[];
+  /** The value where the key has none, and how the help states it. */
+  readonly default: { readonly description: string; readonly value: Effect.Effect<A> };
+  readonly description: string;
+  readonly key: string;
+}
+
+export const GITHUB_AUTH: Setting<"git-proxy" | "token"> = {
+  choices: [
+    {
+      description:
+        "Sends your own token: `GH_TOKEN` or `GITHUB_TOKEN`, or else the one `gh auth token` prints.",
+      value: "token",
+    },
+    {
+      description:
+        "Sends requests through the `http.proxy` that git uses for https://github.com, trusting the certificate authorities in git's `http.sslCAInfo` in place of Bun's own. Sends a placeholder token, which the proxy must replace with real credentials, so a proxy that only forwards requests gets every request rejected. Use it on a self-hosted Claude Code runner started with `--use-anthropic-git-proxy`, where the session holds no GitHub token and only git's config names the proxy. Git's settings are read on each run, so a proxy that moves to another port is followed.",
+      value: "git-proxy",
+    },
+  ],
+  default: { description: "token", value: Effect.succeed("token") },
+  description: "How requests reach api.github.com, and the credentials they carry.",
+  key: "jj-octo.github-auth",
+};
+
+export const IGNORE_CLAUDE_CODE_FOOTER: Setting<boolean> = {
+  choices: [
+    { description: "Leaves the footer out.", value: true },
+    { description: "Compares the body as it is.", value: false },
+  ],
+  default: {
+    description: "`true` where `CLAUDE_CODE_REMOTE` is `true`, and `false` elsewhere",
+    value: claudeCodeCloudSession,
+  },
+  description:
+    "Whether `submit` leaves out the \"Generated by Claude Code\" footer when it compares a pull request's body with its change's description. The GitHub proxy of a Claude Code cloud session can append the footer to each pull request body it creates or edits. Compared with the footer, `submit` reads it as an edit made on GitHub, and writes it into the change.",
+  key: "jj-octo.ignore-claude-code-footer",
+};
+
+export const SETTINGS: readonly (Setting<boolean> | Setting<string>)[] = [
+  GITHUB_AUTH,
+  IGNORE_CLAUDE_CODE_FOOTER,
+];
+
+/** The setting's value in jj's config, or its default where it has none. Fails on any other value. */
+export const readSetting = <A extends boolean | string>(
+  setting: Setting<A>,
+): Effect.Effect<A, JjFailed, Jj> =>
+  Effect.gen(function* () {
+    const value = yield* readJjConfig(setting.key);
+    if (value === undefined) {
+      return yield* setting.default.value;
+    }
+    const choice = setting.choices.find((candidate) => candidate.value === value);
+    if (choice === undefined) {
+      const values = setting.choices.map((candidate) => String(candidate.value)).join(" or ");
+      return yield* new JjFailed({
+        message: `${setting.key} is ${JSON.stringify(value)}; set it to ${values}`,
+      });
+    }
+    return choice.value;
+  });

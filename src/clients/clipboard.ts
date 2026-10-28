@@ -1,7 +1,7 @@
 import { Config, Context, Data, Effect, Layer, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
-import { claudeCodeCloudSession } from "./claude-code";
+import { claudeCodeCloudSession, WAYLAND_DISPLAY } from "../settings";
 
 export class ClipboardFailed extends Data.TaggedError("ClipboardFailed")<{
   readonly message: string;
@@ -48,7 +48,7 @@ interface ClipboardOptions {
 /** The environment variables the clipboard reads, empty where unset. */
 const environment = Config.all({
   path: Config.String("PATH").pipe(Config.withDefault("")),
-  wayland: Config.String("WAYLAND_DISPLAY").pipe(Config.withDefault("")),
+  wayland: Config.String(WAYLAND_DISPLAY.name).pipe(Config.withDefault("")),
 });
 
 interface ClipboardCommand {
