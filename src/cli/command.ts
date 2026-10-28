@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { CliError, Command, Flag } from "effect/cli";
+import { CliError, CliOutput, Command, Flag } from "effect/cli";
 
 const userError = (message: string): CliError.UserError =>
   new CliError.UserError({ cause: message, userMessage: message });
@@ -22,6 +22,18 @@ export const withHelp =
       Command.withShortDescription(summary),
       Command.withDescription([summary, ...paragraphs].join("\n\n  ")),
     );
+
+/** Rows of cells, each column lined up `gap` spaces past the widest cell of the one before it. */
+export const table = (rows: readonly (readonly string[])[], gap: number): readonly string[] => {
+  const width = (column: number): number =>
+    Math.max(0, ...rows.map((row) => CliOutput.displayWidth(row[column] ?? "")));
+  return rows.map((row) =>
+    row
+      .map((cell, column) => `${cell}${" ".repeat(width(column) - CliOutput.displayWidth(cell))}`)
+      .join(" ".repeat(gap))
+      .trimEnd(),
+  );
+};
 
 /** `-r`, as jj has it. The working copy is the default, as it is for jj's own commands. */
 export const revisionFlag = (description: string): Flag.Flag<string> =>
