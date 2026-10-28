@@ -95,10 +95,10 @@ describe("markdownLinks and htmlLinks", () => {
   it("writes a Markdown line per pull request, marked with its state", () => {
     expect(markdownLinks(listed)).toBe(
       [
-        "🚫 [#4 Pull request 4](https://github.com/kkom/jj-octo/pull/4) +123/-45",
-        "📝 [#3 Pull request 3](https://github.com/kkom/jj-octo/pull/3) +0/-7",
-        "👀 [#2 Pull request 2](https://github.com/kkom/jj-octo/pull/2) +1/-0",
-        `🏁 [#1 Escape <b> & "quotes"](https://github.com/kkom/jj-octo/pull/1) +1/-0`,
+        "🚫 [#4 Pull request 4](https://github.com/kkom/jj-octo/pull/4) `+123/-45`",
+        "📝 [#3 Pull request 3](https://github.com/kkom/jj-octo/pull/3) `+0/-7`",
+        "👀 [#2 Pull request 2](https://github.com/kkom/jj-octo/pull/2) `+1/-0`",
+        `🏁 [#1 Escape <b> & "quotes"](https://github.com/kkom/jj-octo/pull/1) \`+1/-0\``,
       ].join("\n"),
     );
   });
@@ -106,10 +106,10 @@ describe("markdownLinks and htmlLinks", () => {
   it("writes the same lines as HTML, escaping the titles", () => {
     expect(htmlLinks(listed)).toBe(
       [
-        '<meta charset="utf-8">🚫 <a href="https://github.com/kkom/jj-octo/pull/4">#4 Pull request 4</a> +123/-45',
-        '📝 <a href="https://github.com/kkom/jj-octo/pull/3">#3 Pull request 3</a> +0/-7',
-        '👀 <a href="https://github.com/kkom/jj-octo/pull/2">#2 Pull request 2</a> +1/-0',
-        '🏁 <a href="https://github.com/kkom/jj-octo/pull/1">#1 Escape &lt;b&gt; &amp; &quot;quotes&quot;</a> +1/-0',
+        '<meta charset="utf-8">🚫 <a href="https://github.com/kkom/jj-octo/pull/4">#4 Pull request 4</a> <code>+123/-45</code>',
+        '📝 <a href="https://github.com/kkom/jj-octo/pull/3">#3 Pull request 3</a> <code>+0/-7</code>',
+        '👀 <a href="https://github.com/kkom/jj-octo/pull/2">#2 Pull request 2</a> <code>+1/-0</code>',
+        '🏁 <a href="https://github.com/kkom/jj-octo/pull/1">#1 Escape &lt;b&gt; &amp; &quot;quotes&quot;</a> <code>+1/-0</code>',
       ].join("<br>"),
     );
   });
@@ -120,7 +120,7 @@ describe("links", () => {
     ["copied", "copied the links to the clipboard"],
     [
       "unreachable",
-      "This Claude Code cloud session can't reach the user's clipboard. To give the user the links, put the Markdown links this command printed in your reply, outside a code block. The Claude app shows them as links, which paste into Slack as links.",
+      "This Claude Code cloud session can't reach the user's clipboard. Put the lines above in your reply exactly as printed, without adding backticks or a code block, so they show as links that paste into Slack.",
     ],
   ] as const)(
     "writes the links to the clipboard as HTML and Markdown when asked, and reports %s",

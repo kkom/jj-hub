@@ -163,7 +163,7 @@ describe.each(builds)("$name", ({ command }) => {
         "CONNECT api.github.com:443",
         "GET api.github.com/repos/owner/name/pulls?state=all&head=owner:a&per_page=100",
       ],
-      result: "👀 [#7 Add a](https://github.com/owner/name/pull/7) +1/-0\n",
+      result: "👀 [#7 Add a](https://github.com/owner/name/pull/7) `+1/-0`\n",
     });
   });
 
@@ -181,8 +181,8 @@ describe.each(builds)("$name", ({ command }) => {
     });
     expect(received.result).toStrictEqual({
       stderr:
-        "This Claude Code cloud session can't reach the user's clipboard. To give the user the links, put the Markdown links this command printed in your reply, outside a code block. The Claude app shows them as links, which paste into Slack as links.\n",
-      stdout: "👀 [#7 Add a](https://github.com/owner/name/pull/7) +1/-0\n",
+        "This Claude Code cloud session can't reach the user's clipboard. Put the lines above in your reply exactly as printed, without adding backticks or a code block, so they show as links that paste into Slack.\n",
+      stdout: "👀 [#7 Add a](https://github.com/owner/name/pull/7) `+1/-0`\n",
     });
   });
 

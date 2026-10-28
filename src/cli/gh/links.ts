@@ -43,8 +43,7 @@ const COPY_REPORT: Readonly<Record<ClipboardWrite, string>> = {
   copied: "copied the links to the clipboard",
   unreachable: [
     "This Claude Code cloud session can't reach the user's clipboard.",
-    "To give the user the links, put the Markdown links this command printed in your reply, outside a code block.",
-    "The Claude app shows them as links, which paste into Slack as links.",
+    "Put the lines above in your reply exactly as printed, without adding backticks or a code block, so they show as links that paste into Slack.",
   ].join(" "),
 };
 
@@ -58,7 +57,7 @@ export const markdownLinks = (pullRequests: readonly LinkedPullRequest[]): strin
   pullRequests
     .map(
       (pullRequest) =>
-        `${EMOJI[pullRequest.state]} [#${pullRequest.number} ${pullRequest.title}](${pullRequest.url}) ${lineCounts(pullRequest)}`,
+        `${EMOJI[pullRequest.state]} [#${pullRequest.number} ${pullRequest.title}](${pullRequest.url}) \`${lineCounts(pullRequest)}\``,
     )
     .join("\n");
 
@@ -70,7 +69,7 @@ export const htmlLinks = (pullRequests: readonly LinkedPullRequest[]): string =>
   `<meta charset="utf-8">${pullRequests
     .map(
       (pullRequest) =>
-        `${EMOJI[pullRequest.state]} <a href="${Bun.escapeHTML(pullRequest.url)}">#${pullRequest.number} ${Bun.escapeHTML(pullRequest.title)}</a> ${lineCounts(pullRequest)}`,
+        `${EMOJI[pullRequest.state]} <a href="${Bun.escapeHTML(pullRequest.url)}">#${pullRequest.number} ${Bun.escapeHTML(pullRequest.title)}</a> <code>${lineCounts(pullRequest)}</code>`,
     )
     .join("<br>")}`;
 
@@ -168,7 +167,7 @@ export const linksCommand = Command.make(
 ).pipe(
   withHelp(
     "Print the stack's pull requests as Markdown links",
-    "Prints one line per pull request, top first: 📝 for a draft, 👀 for one ready for review, 🏁 for a merged one and 🚫 for one closed unmerged, then a Markdown link showing its number and title, then the lines its change adds and removes, as `+123/-45`.",
+    "Prints one line per pull request, top first: 📝 for a draft, 👀 for one ready for review, 🏁 for a merged one and 🚫 for one closed unmerged, then a Markdown link showing its number and title, then the lines its change adds and removes, in inline code, as `+123/-45`.",
     "A change's pull request is the open one from its branch, or else the newest closed one whose head is the change or the commit pushed for it. A change with no pull request is left out, as is one that `sync` abandoned because its pull request merged. Fails where no change has one.",
     "With `--copy`, also puts the links on the clipboard as HTML, which Slack and other apps paste as links. That runs `osascript` on macOS, which also copies the Markdown as plain text, and `wl-copy` or `xclip` on Linux, which copy the HTML alone.",
     "In a Claude Code cloud session, where `CLAUDE_CODE_REMOTE` is `true`, `--copy` copies nothing. It tells the agent to put the Markdown in its reply, which the Claude app shows as links that paste into Slack.",
