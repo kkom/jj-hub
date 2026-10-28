@@ -130,23 +130,6 @@ export const jjConfig = (key: string): Effect.Effect<string, JjFailed, Jj> =>
   });
 
 /**
- * A true-or-false value in jj's config, or `fallback` where it has none. Fails on any other value.
- */
-export const jjFlag = (key: string, fallback = false): Effect.Effect<boolean, JjFailed, Jj> =>
-  Effect.gen(function* () {
-    const value = yield* readJjConfig(key);
-    if (value === undefined) {
-      return fallback;
-    }
-    if (typeof value === "boolean") {
-      return value;
-    }
-    return yield* new JjFailed({
-      message: `${key} is ${JSON.stringify(value)}; set it to true or false`,
-    });
-  });
-
-/**
  * Sets a value in the repository's jj config. Jj parses the value as TOML, so a string or an array
  * goes in as JSON writes it, which is also TOML.
  */

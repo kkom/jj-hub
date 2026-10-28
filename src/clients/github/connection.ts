@@ -1,8 +1,9 @@
-import { Config, Effect, FileSystem, Option, Redacted } from "effect";
+import { Config, Effect, FileSystem, Match, Option, Redacted } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
+import { GH_TOKEN, GITHUB_TOKEN, GITHUB_AUTH, readSetting } from "../../settings";
 import { type Git, gitConfig } from "../git";
-import { type Jj, jjConfig } from "../jj";
+import type { Jj } from "../jj";
 import { GitHubFailed } from "./client";
 
 /** A proxy that requests to api.github.com go through, with the certificate authorities to trust. */
@@ -18,16 +19,13 @@ export interface Connection {
   readonly token: Redacted.Redacted;
 }
 
-/** The jj config key that says where the token comes from. */
-export const authKey = "jj-octo.github-auth";
-
 /**
  * The token for api.github.com: `GH_TOKEN` or `GITHUB_TOKEN` where the environment sets one,
  * and otherwise executes `gh auth token` to generate one.
  */
 const ownToken = Effect.gen(function* () {
   const fromEnvironment = yield* Config.option(
-    Config.Redacted("GH_TOKEN").pipe(Config.orElse(() => Config.Redacted("GITHUB_TOKEN"))),
+    Config.Redacted(GH_TOKEN.name).pipe(Config.orElse(() => Config.Redacted(GITHUB_TOKEN.name))),
   );
   if (Option.isSome(fromEnvironment)) {
     return fromEnvironment.value;
@@ -62,7 +60,7 @@ const gitProxy = Effect.gen(function* () {
   const url = yield* gitSetting("http.proxy");
   if (Option.isNone(url)) {
     return yield* new GitHubFailed({
-      message: `${authKey} is git-proxy, but git has no http.proxy for https://github.com`,
+      message: `${GITHUB_AUTH.key} is git-proxy, but git has no http.proxy for https://github.com`,
     });
   }
   const caFile = yield* gitSetting("http.sslCAInfo");
@@ -87,32 +85,20 @@ const gitProxy = Effect.gen(function* () {
   return connection;
 });
 
-/**
- * Reads `jj-octo.github-auth` from the jj config. `token`, the default, sends the user's own
- * token. `git-proxy` sends requests through git's proxy for github.com, which adds the
- * credentials, as in a sandbox that keeps the token outside it.
- */
+/** Reads `jj-octo.github-auth`, which says how requests reach api.github.com. */
 export const connection: Effect.Effect<
   Connection,
   GitHubFailed,
   ChildProcessSpawner.ChildProcessSpawner | FileSystem.FileSystem | Git | Jj
 > = Effect.gen(function* () {
-  const auth = yield* jjConfig(authKey).pipe(
+  const auth = yield* readSetting(GITHUB_AUTH).pipe(
     Effect.mapError(({ message }) => new GitHubFailed({ message })),
   );
-  switch (auth) {
-    case "":
-    case "token": {
-      const own: Connection = { proxy: Option.none(), token: yield* ownToken };
-      return own;
-    }
-    case "git-proxy": {
-      return yield* gitProxy;
-    }
-    default: {
-      return yield* new GitHubFailed({
-        message: `${authKey} is ${JSON.stringify(auth)}; set it to token or git-proxy`,
-      });
-    }
-  }
+  return yield* Match.value(auth).pipe(
+    Match.when("token", () =>
+      Effect.map(ownToken, (token): Connection => ({ proxy: Option.none(), token })),
+    ),
+    Match.when("git-proxy", () => gitProxy),
+    Match.exhaustive,
+  );
 });

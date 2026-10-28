@@ -5,7 +5,7 @@ import { Effect } from "effect";
 
 import { gitClone, runIn } from "../testing/git-clone";
 import { removeScratchRepositories, scratchRepository } from "../testing/scratch-repository";
-import { type Jj, JjFailed, jjConfig, jjFlag } from "./jj";
+import { type Jj, JjFailed, jjConfig } from "./jj";
 
 afterAll(removeScratchRepositories);
 
@@ -33,12 +33,9 @@ describe("jjConfig", () => {
     );
   });
 
-  it("reads strings and flags, and fails on a value of another type", async () => {
+  it("reads strings, and fails on a value of another type", async () => {
     const clone = gitClone(scratchRepository());
-    writeFileSync(
-      clone.jjConfigFile,
-      '[jj-octo]\non = true\noff = false\nword = "true"\ntable = { a = "x" }\n',
-    );
+    writeFileSync(clone.jjConfigFile, '[jj-octo]\non = true\nword = "true"\ntable = { a = "x" }\n');
     const read = <A>(program: Effect.Effect<A, JjFailed, Jj>) =>
       runIn(
         clone.layer,
@@ -48,22 +45,10 @@ describe("jjConfig", () => {
         ),
       );
     expect([
-      await read(jjFlag("jj-octo.on")),
-      await read(jjFlag("jj-octo.off")),
-      await read(jjFlag("jj-octo.none")),
-      await read(jjFlag("jj-octo.none", true)),
-      await read(jjFlag("jj-octo.off", true)),
-      await read(jjFlag("jj-octo.word")),
       await read(jjConfig("jj-octo.word")),
       await read(jjConfig("jj-octo.on")),
       await read(jjConfig("jj-octo.table")),
     ]).toStrictEqual([
-      { value: true },
-      { value: false },
-      { value: false },
-      { value: true },
-      { value: false },
-      { message: 'jj-octo.word is "true"; set it to true or false' },
       { value: "true" },
       { message: "jj-octo.on is true; set it to a string" },
       { message: "jj-octo.table is a table; set it to a single value" },

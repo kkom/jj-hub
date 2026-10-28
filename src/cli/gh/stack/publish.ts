@@ -5,6 +5,7 @@ import { GitHub, type GitHubFailed } from "../../../clients/github/client";
 import type { PullRequest, PullRequestNumber, RemoteStack } from "../../../clients/github/types";
 import { Jj, type JjFailed } from "../../../clients/jj";
 import { PrDescriptions } from "../../../clients/pr-descriptions";
+import { IGNORE_CLAUDE_CODE_FOOTER, readSetting } from "../../../settings";
 import {
   anyOf,
   bookmarkRevset,
@@ -20,7 +21,6 @@ import {
 import {
   type DescriptionConflict,
   descriptionsOf,
-  ignoresClaudeCodeFooter,
   syncDescription,
   type SyncedDescription,
 } from "./descriptions";
@@ -131,7 +131,7 @@ const publish = (
     const pushedDescriptions = yield* descriptionsOf(
       bookmarks.flatMap((bookmark) => targets.get(bookmark)?.origin ?? []),
     );
-    const ignoreClaudeCodeFooter = yield* ignoresClaudeCodeFooter;
+    const ignoreClaudeCodeFooter = yield* readSetting(IGNORE_CLAUDE_CODE_FOOTER);
 
     // Before anything changes on GitHub, so a conflict in a description stops the whole submit.
     // One at a time, because rewording a change rewrites the ones above it.
