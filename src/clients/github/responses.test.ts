@@ -1,5 +1,7 @@
 import { describe, expect, it } from "bun:test";
 
+import { Option } from "effect";
+
 import { listedPullRequest, remoteStack } from "./responses";
 import { PullRequestNumberSchema, type PullRequestState, StackNumberSchema } from "./types";
 
@@ -16,6 +18,7 @@ const listed = (state: string, draft: boolean | undefined, mergedAt: string | nu
 const link = (state: PullRequestState) => ({
   head: "abc",
   number: PullRequestNumberSchema.make(1),
+  stack: Option.none(),
   state,
   title: "Add a",
   url: "https://github.com/kkom/jj-octo/pull/1",
@@ -38,6 +41,27 @@ describe("listedPullRequest", () => {
       link("merged"),
     );
     expect(listedPullRequest(listed("closed", false, null))).toEqual(link("closed"));
+  });
+});
+
+describe("listedPullRequest's stack", () => {
+  it("links the stack the pull request is in, beside the pull request's page", () => {
+    expect([
+      listedPullRequest({
+        ...listed("open", false, null),
+        stack: { number: StackNumberSchema.make(7) },
+      }),
+      listedPullRequest({ ...listed("open", false, null), stack: null }),
+    ]).toStrictEqual([
+      {
+        ...link("ready"),
+        stack: Option.some({
+          number: StackNumberSchema.make(7),
+          url: "https://github.com/kkom/jj-octo/stack/7",
+        }),
+      },
+      link("ready"),
+    ]);
   });
 });
 

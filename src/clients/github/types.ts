@@ -1,4 +1,4 @@
-import { Schema } from "effect";
+import { type Option, Schema } from "effect";
 
 export const PullRequestNumberSchema = Schema.Number.pipe(Schema.brand("PullRequestNumber"));
 export type PullRequestNumber = typeof PullRequestNumberSchema.Type;
@@ -17,10 +17,20 @@ export interface PullRequest {
 /** Where a pull request is: open as a draft or ready for review, merged, or closed unmerged. */
 export type PullRequestState = "closed" | "draft" | "merged" | "ready";
 
-/** A pull request from a branch, in any state, with its head commit, title and address. */
+/** A stack registered on GitHub, with the address of its page. */
+export interface StackLink {
+  readonly number: StackNumber;
+  readonly url: string;
+}
+
+/**
+ * A pull request from a branch, in any state, with its head commit, title and address, and the
+ * stack it is in, where it is in one.
+ */
 export interface ListedPullRequest {
   readonly head: string;
   readonly number: PullRequestNumber;
+  readonly stack: Option.Option<StackLink>;
   readonly state: PullRequestState;
   readonly title: string;
   readonly url: string;

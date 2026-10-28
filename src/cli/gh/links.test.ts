@@ -7,6 +7,7 @@ import {
   type ListedPullRequest,
   PullRequestNumberSchema,
   type PullRequestState,
+  StackNumberSchema,
 } from "../../clients/github/types";
 import { fakeConsole } from "../../testing/fake-console";
 import { fakeGitHub, inRepository } from "../../testing/fake-github";
@@ -25,6 +26,7 @@ afterAll(removeScratchRepositories);
 const pullRequest = (number: number, state: PullRequestState, head: string): ListedPullRequest => ({
   head,
   number: PullRequestNumberSchema.make(number),
+  stack: Option.none(),
   state,
   title: `Pull request ${number}`,
   url: `https://github.com/kkom/jj-octo/pull/${number}`,
@@ -115,6 +117,43 @@ describe("markdownLinks and htmlLinks", () => {
   });
 });
 
+// The pull request in GitHub stack `number`.
+const inStack = (listed: LinkedPullRequest, number: number): LinkedPullRequest => ({
+  ...listed,
+  stack: Option.some({
+    number: StackNumberSchema.make(number),
+    url: `https://github.com/kkom/jj-octo/stack/${number}`,
+  }),
+});
+
+describe("markdownLinks and htmlLinks with stacks", () => {
+  // A stack registered again under a new number leaves its merged pull requests in the old one.
+  const listed = [
+    inStack(linked(pullRequest(3, "ready", "x")), 8),
+    inStack(linked(pullRequest(2, "ready", "x")), 8),
+    inStack(linked(pullRequest(1, "merged", "x")), 7),
+  ];
+
+  it("links each stack once, above the pull requests", () => {
+    expect([markdownLinks(listed), htmlLinks(listed)]).toStrictEqual([
+      [
+        "📚 [Stack #8](https://github.com/kkom/jj-octo/stack/8)",
+        "📚 [Stack #7](https://github.com/kkom/jj-octo/stack/7)",
+        "👀 [#3 Pull request 3](https://github.com/kkom/jj-octo/pull/3) `+1/-0`",
+        "👀 [#2 Pull request 2](https://github.com/kkom/jj-octo/pull/2) `+1/-0`",
+        "🏁 [#1 Pull request 1](https://github.com/kkom/jj-octo/pull/1) `+1/-0`",
+      ].join("\n"),
+      [
+        '<meta charset="utf-8">📚 <a href="https://github.com/kkom/jj-octo/stack/8">Stack #8</a>',
+        '📚 <a href="https://github.com/kkom/jj-octo/stack/7">Stack #7</a>',
+        '👀 <a href="https://github.com/kkom/jj-octo/pull/3">#3 Pull request 3</a> <code>+1/-0</code>',
+        '👀 <a href="https://github.com/kkom/jj-octo/pull/2">#2 Pull request 2</a> <code>+1/-0</code>',
+        '🏁 <a href="https://github.com/kkom/jj-octo/pull/1">#1 Pull request 1</a> <code>+1/-0</code>',
+      ].join("<br>"),
+    ]);
+  });
+});
+
 describe("links", () => {
   it.each([
     ["copied", "copied the links to the clipboard"],
@@ -164,6 +203,34 @@ describe("links", () => {
       copied: [],
       failure: new NoPullRequests({ message: "no change of the stack has a pull request" }),
     });
+  });
+
+  it("prints the GitHub stack the pull requests are in above them", async () => {
+    const repository = scratchRepository();
+    repository.stack("a", "b");
+    const github = fakeGitHub({}, Option.none(), {
+      pullRequestsFrom: (branch) => [
+        inStack(linked(pullRequest(branch === "a" ? 1 : 2, "ready", "anything")), 5),
+      ],
+    });
+    const console = fakeConsole();
+    await Effect.runPromise(
+      links({ copy: false, revision: "@" }).pipe(
+        Effect.provide(fakeClipboard().layer),
+        inRepository(repository, github),
+        console.provide,
+      ),
+    );
+    expect(console.printed).toStrictEqual([
+      {
+        stream: "stdout",
+        text: [
+          "📚 [Stack #5](https://github.com/kkom/jj-octo/stack/5)",
+          "👀 [#2 Pull request 2](https://github.com/kkom/jj-octo/pull/2) `+1/-0`",
+          "👀 [#1 Pull request 1](https://github.com/kkom/jj-octo/pull/1) `+1/-0`",
+        ].join("\n"),
+      },
+    ]);
   });
 
   it("copies nothing unless asked", async () => {
