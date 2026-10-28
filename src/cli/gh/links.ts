@@ -1,4 +1,4 @@
-import { Console, Data, Effect, Option } from "effect";
+import { Array as EffectArray, Console, Data, Effect, Option } from "effect";
 import { Command, Flag } from "effect/cli";
 
 import {
@@ -9,7 +9,7 @@ import {
 } from "../../clients/clipboard";
 import { GitHub, type GitHubFailed } from "../../clients/github/client";
 import { GitHubFromOrigin } from "../../clients/github/origin";
-import type { ListedPullRequest, PullRequestState } from "../../clients/github/types";
+import type { ListedPullRequest, PullRequestState, StackLink } from "../../clients/github/types";
 import { type Jj, JjFailed } from "../../clients/jj";
 import { asUserError, revisionFlag, withHelp } from "../command";
 import {
@@ -30,6 +30,8 @@ const EMOJI: Readonly<Record<PullRequestState, string>> = {
   merged: "🏁",
   ready: "👀",
 };
+
+const STACK_EMOJI = "📚";
 
 const OPEN: Readonly<Record<PullRequestState, boolean>> = {
   closed: false,
@@ -52,26 +54,53 @@ export interface LinkedPullRequest extends ListedPullRequest, LineCounts {}
 
 const lineCounts = ({ added, removed }: LineCounts): string => `+${added}/-${removed}`;
 
-/** One Markdown line per pull request. */
+/** The GitHub stacks the pull requests are in, each once, in the order of the pull requests. */
+const stacksOf = (pullRequests: readonly LinkedPullRequest[]): readonly StackLink[] =>
+  EffectArray.dedupeWith(
+    EffectArray.getSomes(pullRequests.map(({ stack }) => stack)),
+    (one, other) => one.number === other.number,
+  );
+
+/** How a line of links writes a link and a code span: as Markdown or as HTML. */
+interface LinkFormat {
+  readonly code: (text: string) => string;
+  readonly link: (text: string, url: string) => string;
+}
+
+/** One line per GitHub stack the pull requests are in, then one per pull request. */
+const linkLines = (
+  pullRequests: readonly LinkedPullRequest[],
+  { code, link }: LinkFormat,
+): readonly string[] => [
+  ...stacksOf(pullRequests).map(
+    ({ number, url }) => `${STACK_EMOJI} ${link(`Stack #${number}`, url)}`,
+  ),
+  ...pullRequests.map(
+    (pullRequest) =>
+      `${EMOJI[pullRequest.state]} ${link(`#${pullRequest.number} ${pullRequest.title}`, pullRequest.url)} ${code(lineCounts(pullRequest))}`,
+  ),
+];
+
+const MARKDOWN: LinkFormat = {
+  code: (text) => `\`${text}\``,
+  link: (text, url) => `[${text}](${url})`,
+};
+
+const HTML: LinkFormat = {
+  code: (text) => `<code>${text}</code>`,
+  link: (text, url) => `<a href="${Bun.escapeHTML(url)}">${Bun.escapeHTML(text)}</a>`,
+};
+
+/** The links as Markdown, one per line. */
 export const markdownLinks = (pullRequests: readonly LinkedPullRequest[]): string =>
-  pullRequests
-    .map(
-      (pullRequest) =>
-        `${EMOJI[pullRequest.state]} [#${pullRequest.number} ${pullRequest.title}](${pullRequest.url}) \`${lineCounts(pullRequest)}\``,
-    )
-    .join("\n");
+  linkLines(pullRequests, MARKDOWN).join("\n");
 
 /**
  * The same lines as HTML, which apps such as Slack paste as links. The charset keeps the emoji
  * intact where the app reads the HTML without one.
  */
 export const htmlLinks = (pullRequests: readonly LinkedPullRequest[]): string =>
-  `<meta charset="utf-8">${pullRequests
-    .map(
-      (pullRequest) =>
-        `${EMOJI[pullRequest.state]} <a href="${Bun.escapeHTML(pullRequest.url)}">#${pullRequest.number} ${Bun.escapeHTML(pullRequest.title)}</a> <code>${lineCounts(pullRequest)}</code>`,
-    )
-    .join("<br>")}`;
+  `<meta charset="utf-8">${linkLines(pullRequests, HTML).join("<br>")}`;
 
 /**
  * The change's pull request: the open one from its branch, or else the newest closed one whose
@@ -167,7 +196,7 @@ export const linksCommand = Command.make(
 ).pipe(
   withHelp(
     "Print the stack's pull requests as Markdown links",
-    "Prints one line per pull request, top first: 📝 for a draft, 👀 for one ready for review, 🏁 for a merged one and 🚫 for one closed unmerged, then a Markdown link showing its number and title, then the lines its change adds and removes, in inline code, as `+123/-45`.",
+    "Prints a link to each GitHub stack the pull requests are in, as 📚 and the stack's number. Then prints one line per pull request, top first: 📝 for a draft, 👀 for one ready for review, 🏁 for a merged one and 🚫 for one closed unmerged, then a Markdown link showing its number and title, then the lines its change adds and removes, in inline code, as `+123/-45`.",
     "A change's pull request is the open one from its branch, or else the newest closed one whose head is the change or the commit pushed for it. A change with no pull request is left out, as is one that `sync` abandoned because its pull request merged. Fails where no change has one.",
     "With `--copy`, also puts the links on the clipboard as HTML, which Slack and other apps paste as links. That runs `osascript` on macOS, which also copies the Markdown as plain text, and `wl-copy` or `xclip` on Linux, which copy the HTML alone.",
     "In a Claude Code cloud session, where `CLAUDE_CODE_REMOTE` is `true`, `--copy` copies nothing. It tells the agent to put the Markdown in its reply, which the Claude app shows as links that paste into Slack.",

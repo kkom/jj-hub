@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { BunServices } from "@effect/platform-bun";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Option } from "effect";
 
 import { lines } from "../cli/gh/stack/changes";
 import { type Git, gitLayer } from "../clients/git";
@@ -186,6 +186,7 @@ const open = (root: string): ScratchRepository => {
         pullRequest: {
           head,
           number: PullRequestNumberSchema.make(number),
+          stack: Option.none(),
           state: "merged",
           title: branch,
           url: `https://github.com/kkom/jj-octo/pull/${number}`,

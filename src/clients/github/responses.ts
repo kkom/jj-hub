@@ -1,4 +1,4 @@
-import { Schema } from "effect";
+import { Option, Schema } from "effect";
 
 import { responseOf } from "./openapi";
 import {
@@ -27,6 +27,7 @@ export const PullRequests = responseOf<"pulls/list">()(
     }),
   ),
 );
+const StackOfPullRequest = Schema.Struct({ number: Schema.optionalKey(StackNumberSchema) });
 export const AnyPullRequests = responseOf<"pulls/list">()(
   Schema.Array(
     Schema.Struct({
@@ -35,6 +36,7 @@ export const AnyPullRequests = responseOf<"pulls/list">()(
       html_url: Schema.String,
       merged_at: Schema.NullOr(Schema.String),
       number: PullRequestNumberSchema,
+      stack: Schema.optionalKey(Schema.NullOr(StackOfPullRequest)),
       state: Schema.String,
       title: Schema.String,
     }),
@@ -69,12 +71,24 @@ export const listedPullRequest = ({
   html_url,
   merged_at,
   number,
+  stack,
   state,
   title,
 }: (typeof AnyPullRequests.Type)[number]): ListedPullRequest => {
   const open = draft === true ? "draft" : "ready";
   const closed = merged_at === null ? "closed" : "merged";
-  return { head: head.sha, number, state: state === "open" ? open : closed, title, url: html_url };
+  return {
+    head: head.sha,
+    number,
+    // The stack's page is beside the pull request's: `…/pull/2` and `…/stack/7`.
+    stack: Option.map(Option.fromNullishOr(stack?.number), (stackNumber) => ({
+      number: stackNumber,
+      url: new URL(`../stack/${stackNumber}`, html_url).href,
+    })),
+    state: state === "open" ? open : closed,
+    title,
+    url: html_url,
+  };
 };
 
 /** One stack of a `Stacks` listing, with the pull requests that haven't merged, bottom to top. */
