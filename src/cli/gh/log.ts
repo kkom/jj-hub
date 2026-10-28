@@ -5,7 +5,7 @@ import { GitHub, type GitHubFailed } from "../../clients/github/client";
 import { GitHubFromOrigin } from "../../clients/github/origin";
 import type { PullRequest } from "../../clients/github/types";
 import type { Jj, JjFailed } from "../../clients/jj";
-import { asUserError, revisionFlag, withHelp } from "../command";
+import { asUserError, revisionFlag, table, withHelp } from "../command";
 import {
   bookmarkTargets,
   type NotAStack,
@@ -30,14 +30,7 @@ const logLines = (entries: readonly LogEntry[]): readonly string[] => {
     }),
     pushed,
   ]);
-  const width = (column: number): number =>
-    Math.max(0, ...rows.map((row) => row[column]?.length ?? 0));
-  return rows.map((row) =>
-    row
-      .map((cell, column) => cell.padEnd(width(column)))
-      .join("  ")
-      .trimEnd(),
-  );
+  return table(rows, 2);
 };
 
 /** The changes of the stack containing the revision, each with its pull request and push state. */
