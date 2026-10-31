@@ -1,7 +1,7 @@
 {
-  "options": {
-    "typeAware": true,
-  },
+  // Type-aware linting is on through `--type-aware` in the lint scripts and `oxc.typeAware` in
+  // the editor, not `options.typeAware` here. oxlint accepts that option only in the root
+  // config, and an editor opened on a parent directory reads this file as a nested one.
   "categories": {
     "correctness": "error",
     "suspicious": "error",
