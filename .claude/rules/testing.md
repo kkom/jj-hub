@@ -13,6 +13,16 @@ That's because a fake behaves like the real dependency, so the test checks outco
 - ❌ A mock asserting that `send` was called once with a given message
 - ✅ A fake mailer that keeps sent messages in a list the test reads
 
+## Make a fake do what the real dependency does
+
+A fake answers as its documentation and real responses show the real dependency does. It adds no shortcut, default or failure response that the real one lacks. A test helper takes each step as a client would, and fails in the test's own code.
+
+That's because a test can pass against a fake that differs, while production fails.
+
+- ✅ A fake sign-in service that asks a person in several organizations to pick one, as the real one does
+- ❌ A fake that signs that person in to no organization
+- ❌ A response the fake sends only to tell a test helper that something failed
+
 ## Inject dependencies the way the framework does
 
 Give code its dependencies through the framework's own dependency injection, such as an Effect layer or a constructor parameter. The test then provides the fake in the same place where production provides the real implementation.
