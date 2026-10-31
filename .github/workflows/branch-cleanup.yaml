@@ -1,24 +1,20 @@
 name: Branch cleanup
 
-# Deletes every branch whose last commit is more than two weeks old, unless an open pull
-# request has it as its head or its base. A branch low in a stack is the base of the pull
-# request above it, and GitHub closes that pull request when its base is deleted. jj
-# rewrites a commit's committer date on every rebase, so a stack kept in sync with main
-# stays younger than the cutoff. A branch pushed to after its latest pull request closed
-# has commits that pull request never had. So it's kept, and listed on each run for a
-# person to delete. On a pull request, or when run by hand with dry_run, it lists what it
-# would delete and deletes nothing.
+# Deletes branches with no commit in two weeks, except ones still in use. The step summary
+# lists what it deleted and what it kept. On a pull request, or when run by hand with
+# dry_run, it deletes nothing.
 on:
   pull_request:
     paths:
-      - ".github/workflows/branch-cleanup.yaml"
+      - ".github/workflows/branch-cleanup.*"
   push:
     branches:
       - main
     paths:
-      - ".github/workflows/branch-cleanup.yaml"
+      - ".github/workflows/branch-cleanup.*"
   schedule:
-    - cron: "17 4 * * *"
+    - cron: "7 9 * * *"
+      timezone: Europe/London
   workflow_dispatch:
     inputs:
       dry_run:
@@ -41,115 +37,19 @@ jobs:
 
     permissions:
       contents: write
+      pages: read
       pull-requests: read
 
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/workflows/branch-cleanup.sh
+          sparse-checkout-cone-mode: false
+
       - name: Delete stale branches
-        shell: bash
         env:
           CUTOFF_DAYS: "14"
           DRY_RUN: ${{ github.event_name == 'pull_request' || inputs.dry_run == true }}
           GH_TOKEN: ${{ github.token }}
-        run: |
-          CUTOFF="$(date --utc --date "${CUTOFF_DAYS} days ago" +%Y-%m-%dT%H:%M:%SZ)"
-          export CUTOFF
-
-          # A pull request from a fork has a head branch of the same name only in the fork
-          gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=100" \
-            --jq '.[] | (select(.head.repo.full_name == env.GITHUB_REPOSITORY) | .head.ref), .base.ref' \
-            > "${RUNNER_TEMP}/open"
-          declare -A open
-          while read -r branch; do
-            open["${branch}"]=1
-          done < "${RUNNER_TEMP}/open"
-
-          # Prints each old branch, a tab, and the number of the pull request from it that
-          # closed last, if the branch's head differs from that pull request's head. GitHub
-          # stops updating a pull request's head once it closes. So a different head means
-          # commits pushed since. As above, a pull request from a fork doesn't count.
-          #
-          # GitHub writes committedDate in UTC with a Z suffix, as CUTOFF is written. So
-          # comparing the strings compares the times.
-          gh api graphql --paginate \
-            --raw-field owner="${GITHUB_REPOSITORY%/*}" \
-            --raw-field repo="${GITHUB_REPOSITORY#*/}" \
-            --raw-field query='
-              query($owner: String!, $repo: String!, $endCursor: String) {
-                repository(owner: $owner, name: $repo) {
-                  defaultBranchRef { name }
-                  refs(refPrefix: "refs/heads/", first: 100, after: $endCursor) {
-                    nodes {
-                      name
-                      target { oid ... on Commit { committedDate } }
-                      associatedPullRequests(first: 10, orderBy: { field: CREATED_AT, direction: DESC }) {
-                        nodes { number closedAt headRefOid headRepository { nameWithOwner } }
-                      }
-                    }
-                    pageInfo { hasNextPage endCursor }
-                  }
-                }
-              }' \
-            --jq '.data.repository as $repository
-              | $repository.refs.nodes[]
-              | select(.name != $repository.defaultBranchRef.name and .target.committedDate < env.CUTOFF)
-              | .target.oid as $head
-              | (.associatedPullRequests.nodes
-                | map(select(.closedAt != null and .headRepository.nameWithOwner == env.GITHUB_REPOSITORY))
-                | max_by(.closedAt)) as $pull
-              | [.name, ($pull | select(.headRefOid != $head) | .number) // ""]
-              | @tsv' \
-            > "${RUNNER_TEMP}/old"
-
-          stale=()
-          kept=()
-          while IFS=$'\t' read -r branch pull; do
-            if [ -n "${open["${branch}"]:-}" ]; then
-              continue
-            elif [ -n "${pull}" ]; then
-              echo "::warning::Kept ${branch}, pushed to after #${pull} closed"
-              kept+=("\`${branch}\`, after #${pull}")
-            else
-              stale+=("${branch}")
-            fi
-          done < <(sort "${RUNNER_TEMP}/old")
-
-          deleted=()
-          failed=()
-          for branch in "${stale[@]}"; do
-            echo "${branch}"
-            if [ "${DRY_RUN}" = true ] || gh api --method DELETE "repos/${GITHUB_REPOSITORY}/git/refs/heads/${branch}"; then
-              deleted+=("${branch}")
-            else
-              failed+=("${branch}")
-            fi
-          done
-
-          {
-            if [ "${DRY_RUN}" = true ]; then
-              verb="Would delete"
-            else
-              verb="Deleted"
-            fi
-            echo "### ${verb} ${#deleted[@]} branches with no commit since ${CUTOFF}"
-            if [ "${#deleted[@]}" -gt 0 ]; then
-              echo
-              printf -- '- `%s`\n' "${deleted[@]}"
-            fi
-            if [ "${#kept[@]}" -gt 0 ]; then
-              echo
-              echo "### Kept ${#kept[@]} branches pushed to after their latest pull request closed"
-              echo
-              printf -- '- %s\n' "${kept[@]}"
-            fi
-            if [ "${#failed[@]}" -gt 0 ]; then
-              echo
-              echo "### Failed to delete ${#failed[@]} branches"
-              echo
-              printf -- '- `%s`\n' "${failed[@]}"
-            fi
-          } >>"${GITHUB_STEP_SUMMARY}"
-
-          if [ "${#failed[@]}" -gt 0 ]; then
-            printf '::error::Failed to delete %s\n' "${failed[@]}"
-            exit 1
-          fi
+        run: .github/workflows/branch-cleanup.sh
